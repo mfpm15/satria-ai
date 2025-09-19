@@ -540,6 +540,32 @@ Plan multi-vendor response strategy with specific actions."""
             }
         )
 
+    async def cleanup(self) -> None:
+        """Cleanup resources before shutdown"""
+        try:
+            # Cancel any active actions
+            for action_id in list(self.active_actions.keys()):
+                action = self.active_actions[action_id]
+                if action.status == ActionStatus.IN_PROGRESS:
+                    action.status = ActionStatus.FAILED
+                    logging.warning(f"Action {action_id} cancelled during shutdown")
+
+            self.active_actions.clear()
+
+            # Cleanup vendor connectors
+            for connector in self.vendor_connectors.values():
+                try:
+                    await connector.cleanup()
+                except Exception as e:
+                    logging.error(f"Error cleaning up connector: {e}")
+
+            self.vendor_connectors.clear()
+
+            logging.info("Multi-Vendor Orchestrator cleanup completed")
+
+        except Exception as e:
+            logging.error(f"Error during Multi-Vendor Orchestrator cleanup: {e}")
+
     def get_metrics(self) -> Dict[str, Any]:
         """Get orchestrator metrics"""
         return {

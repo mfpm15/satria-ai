@@ -167,7 +167,8 @@ class AutonomousResponseOrchestrator(BaseAgent):
         """Determine if event should trigger autonomous response"""
         try:
             # Check event risk score
-            if event.risk < 50:
+            risk_score = event.risk_score or 0
+            if risk_score < 50:
                 return False
 
             # Check if event type is actionable
@@ -251,10 +252,10 @@ Consider business impact, false positive risk, and operational constraints."""
 
             user_prompt = f"""Incident Analysis:
 Event Type: {event.event_type}
-Risk Score: {event.risk}/100
+Risk Score: {event.risk_score or 0}/100
 Confidence: {event.confidence}
-Affected Entities: {event.entity_ids}
-Message: {event.message}
+Affected Entities: {event.enrichment.get('entity_ids', {})}
+Message: {event.enrichment.get('message', '')}
 
 Context:
 - Similar Past Incidents: {len(context.get('similar_incidents', []))}
@@ -300,24 +301,24 @@ Generate an autonomous response strategy with specific, executable actions."""
         }
 
         # Rule-based action selection
-        if event.risk >= 85:
+        if (event.risk_score or 0) >= 85:
             strategy["urgency"] = "immediate"
             if event.event_type == "malware_detection":
                 strategy["primary_actions"].append({
                     "action": "isolate_host",
-                    "target": event.entity_ids.get("host", "unknown"),
+                    "target": event.enrichment.get("entity_ids", {}).get("host", "unknown"),
                     "priority": 1,
                     "risk_level": "medium",
                     "estimated_time": "2 minutes",
                     "rollback_possible": True
                 })
 
-        elif event.risk >= 70:
+        elif (event.risk_score or 0) >= 70:
             strategy["urgency"] = "high"
             if "authentication_failure" in event.event_type:
                 strategy["primary_actions"].append({
                     "action": "disable_user",
-                    "target": event.entity_ids.get("user", "unknown"),
+                    "target": event.enrichment.get("entity_ids", {}).get("user", "unknown"),
                     "priority": 2,
                     "risk_level": "low",
                     "estimated_time": "1 minute",
@@ -347,7 +348,7 @@ Generate an autonomous response strategy with specific, executable actions."""
             # Set execution policy
             plan.auto_execute = (
                 plan.confidence >= self.decision_thresholds["auto_execute_confidence"] and
-                event.risk <= self.decision_thresholds["auto_execute_max_risk"] and
+                (event.risk_score or 0) <= self.decision_thresholds["auto_execute_max_risk"] and
                 await self._passes_safety_checks(plan)
             )
 
@@ -443,7 +444,7 @@ Generate an autonomous response strategy with specific, executable actions."""
                 return False
 
             # Check risk threshold
-            if plan.trigger_event and plan.trigger_event.risk > self.decision_thresholds["auto_execute_max_risk"]:
+            if plan.trigger_event and (plan.trigger_event.risk_score or 0) > self.decision_thresholds["auto_execute_max_risk"]:
                 return False
 
             # Check safety constraints

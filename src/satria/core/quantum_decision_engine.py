@@ -19,8 +19,12 @@ from satria.core.config import settings
 
 class Persona(str, Enum):
     """QDE Personas"""
-    ELLIOT = "elliot"  # Red team persona - proactive, testing
+    ELLIOT = "elliot"  # Red team persona - proactive, hunting
     MR_ROBOT = "mr_robot"  # Blue team persona - defensive, reactive
+    PURPLE_TEAM = "purple_team"  # Purple team - collaborative validation
+    THREAT_HUNTER = "threat_hunter"  # Advanced hunting persona
+    INCIDENT_COMMANDER = "incident_commander"  # Crisis management persona
+    COMPLIANCE_OFFICER = "compliance_officer"  # Regulatory compliance focused
     BALANCED = "balanced"  # Hybrid approach
 
 
@@ -57,11 +61,12 @@ class DecisionContext:
 @dataclass
 class PersonaMix:
     """Persona probability distribution"""
-    elliot_weight: float  # Red team weight
-    mr_robot_weight: float  # Blue team weight
+    persona_weights: Dict[str, float]  # All persona weights
     dominant_persona: Persona
+    secondary_persona: Optional[Persona]
     confidence: float
     reasoning: str
+    collaboration_score: float = 0.0  # Purple team collaboration factor
 
 
 @dataclass
@@ -102,29 +107,45 @@ class QuantumDecisionEngine:
     def __init__(self):
         self.logger = logging.getLogger("satria.qde")
 
-        # Calibration parameters
-        self.blue_bias = 0.65  # Conservative default
+        # Advanced calibration parameters
+        self.persona_base_weights = {
+            Persona.MR_ROBOT: 0.25,  # Defensive baseline
+            Persona.ELLIOT: 0.20,  # Proactive hunting
+            Persona.PURPLE_TEAM: 0.20,  # Collaborative validation
+            Persona.THREAT_HUNTER: 0.15,  # Advanced hunting
+            Persona.INCIDENT_COMMANDER: 0.10,  # Crisis management
+            Persona.COMPLIANCE_OFFICER: 0.05,  # Regulatory focus
+            Persona.BALANCED: 0.05  # Fallback hybrid
+        }
+
         self.risk_sensitivity = 0.8
         self.confidence_threshold = 0.7
+        self.collaboration_threshold = 0.6
 
-        # Policy constraints
+        # Enhanced policy constraints
         self.policy_gates = {
             "maintenance_window": False,
             "critical_service_protection": True,
             "approval_required_threshold": 0.8,
-            "auto_action_enabled": True
+            "auto_action_enabled": True,
+            "purple_team_validation": True,
+            "compliance_mode": False,
+            "threat_hunting_enabled": True,
+            "crisis_mode": False
         }
 
         # Historical decisions for learning
         self.decision_history: List[QDEDecision] = []
+        self.persona_performance: Dict[Persona, Dict[str, float]] = {}
 
-        # Persona calibration weights
-        self.persona_weights = {
-            "risk_factor": 0.3,
-            "confidence_factor": 0.2,
-            "business_impact_factor": 0.25,
+        # Dynamic learning factors
+        self.decision_factors = {
+            "risk_factor": 0.25,
+            "confidence_factor": 0.20,
+            "business_impact_factor": 0.20,
             "time_pressure_factor": 0.15,
-            "historical_factor": 0.1
+            "historical_factor": 0.10,
+            "collaboration_factor": 0.10
         }
 
     async def decide(self, context: DecisionContext) -> QDEDecision:
@@ -166,7 +187,8 @@ class QuantumDecisionEngine:
 
     async def _calculate_persona_superposition(self, context: DecisionContext) -> PersonaMix:
         """
-        Calculate probabilistic superposition: |S⟩ = α|Blue⟩ + β|Red⟩
+        Calculate advanced multi-persona superposition
+        |S⟩ = Σ αᵢ|Personaᵢ⟩ where Σ|αᵢ|² = 1
         """
         # Base factors for persona calculation
         factors = {
@@ -174,33 +196,43 @@ class QuantumDecisionEngine:
             "confidence": self._calculate_confidence_factor(context.confidence),
             "business_impact": self._calculate_business_impact_factor(context.business_impact),
             "time_pressure": self._calculate_time_pressure_factor(context.time_pressure),
-            "historical": self._calculate_historical_factor(context)
+            "historical": self._calculate_historical_factor(context),
+            "collaboration": self._calculate_collaboration_factor(context)
         }
 
-        # Weighted combination
-        blue_score = sum(
-            factors[factor] * self.persona_weights[f"{factor}_factor"]
-            for factor in factors
-        )
+        # Calculate weights for each persona
+        persona_scores = {}
+        for persona in Persona:
+            score = self._calculate_persona_score(persona, factors, context)
+            persona_scores[persona] = score
 
-        # Apply bias and normalize
-        alpha_blue = min(max(blue_score * self.blue_bias, 0.0), 1.0)
-        beta_red = 1.0 - alpha_blue
+        # Normalize weights
+        total_score = sum(persona_scores.values())
+        if total_score > 0:
+            persona_weights = {p: s/total_score for p, s in persona_scores.items()}
+        else:
+            persona_weights = {p: 1.0/len(Persona) for p in Persona}
 
-        # Thompson sampling for final persona selection
-        dominant_persona = self._sample_persona(alpha_blue, beta_red)
+        # Select dominant and secondary personas
+        sorted_personas = sorted(persona_weights.items(), key=lambda x: x[1], reverse=True)
+        dominant_persona = sorted_personas[0][0]
+        secondary_persona = sorted_personas[1][0] if len(sorted_personas) > 1 else None
 
-        # Calculate confidence in decision
-        decision_confidence = abs(alpha_blue - beta_red)  # Higher when not close to 50/50
+        # Calculate decision confidence
+        decision_confidence = sorted_personas[0][1] - sorted_personas[1][1] if len(sorted_personas) > 1 else 1.0
 
-        reasoning = self._explain_persona_selection(factors, alpha_blue, beta_red)
+        # Calculate collaboration score
+        collaboration_score = self._calculate_collaboration_score(dominant_persona, secondary_persona, context)
+
+        reasoning = self._explain_advanced_persona_selection(factors, sorted_personas[:3])
 
         return PersonaMix(
-            elliot_weight=beta_red,
-            mr_robot_weight=alpha_blue,
+            persona_weights={p.value: w for p, w in persona_weights.items()},
             dominant_persona=dominant_persona,
+            secondary_persona=secondary_persona,
             confidence=decision_confidence,
-            reasoning=reasoning
+            reasoning=reasoning,
+            collaboration_score=collaboration_score
         )
 
     def _calculate_risk_factor(self, risk_score: float) -> float:
@@ -240,37 +272,129 @@ class QuantumDecisionEngine:
         if not similar_decisions:
             return 0.5
 
-        # Favor persona that had better outcomes
-        # This would integrate with feedback from Operational Memory
-        blue_outcomes = sum(1 for d in similar_decisions if d.persona_mix.dominant_persona == Persona.MR_ROBOT)
+        # Calculate success rate for each persona
+        persona_performance = {}
+        for persona in Persona:
+            persona_decisions = [d for d in similar_decisions if d.persona_mix.dominant_persona == persona]
+            if persona_decisions:
+                # Simulate success rate (in production, would use actual feedback)
+                success_rate = 0.8 if persona == Persona.MR_ROBOT else 0.75
+                persona_performance[persona] = success_rate
 
-        return blue_outcomes / len(similar_decisions)
+        return max(persona_performance.values()) if persona_performance else 0.5
 
-    def _sample_persona(self, alpha_blue: float, beta_red: float) -> Persona:
-        """Thompson sampling for persona selection"""
-        if abs(alpha_blue - beta_red) < 0.1:  # Very close - use balanced
-            return Persona.BALANCED
-        elif random.random() < alpha_blue:
-            return Persona.MR_ROBOT
-        else:
-            return Persona.ELLIOT
+    def _calculate_collaboration_factor(self, context: DecisionContext) -> float:
+        """Calculate need for collaborative approach"""
+        collaboration_indicators = [
+            context.risk_score > 0.7,  # High risk benefits from validation
+            context.business_impact in ["HIGH", "CRITICAL"],  # High impact needs multiple perspectives
+            len(context.affected_entities) > 5,  # Complex incidents need collaboration
+            "advanced_persistent_threat" in context.attack_stage.lower()  # APT needs purple team
+        ]
 
-    def _explain_persona_selection(self, factors: Dict[str, float], alpha: float, beta: float) -> str:
-        """Generate human-readable reasoning"""
+        return sum(collaboration_indicators) / len(collaboration_indicators)
+
+    def _calculate_persona_score(self, persona: Persona, factors: Dict[str, float], context: DecisionContext) -> float:
+        """Calculate score for specific persona based on context"""
+        base_weight = self.persona_base_weights.get(persona, 0.1)
+
+        # Persona-specific factor adjustments
+        if persona == Persona.MR_ROBOT:
+            # Defensive persona - favors high risk, proven responses
+            score = base_weight * (1.0 + factors["risk"] + factors["business_impact"])
+
+        elif persona == Persona.ELLIOT:
+            # Proactive hunting - favors medium risk, high confidence
+            score = base_weight * (1.0 + factors["confidence"] + (1.0 - factors["time_pressure"]))
+
+        elif persona == Persona.PURPLE_TEAM:
+            # Collaborative validation - favors complex scenarios
+            score = base_weight * (1.0 + factors["collaboration"] + factors["risk"])
+
+        elif persona == Persona.THREAT_HUNTER:
+            # Advanced hunting - favors early stage, low time pressure
+            score = base_weight * (1.0 + factors["confidence"] + (1.0 - factors["time_pressure"]))
+            if "Initial Access" in context.attack_stage or "Reconnaissance" in context.attack_stage:
+                score *= 1.5
+
+        elif persona == Persona.INCIDENT_COMMANDER:
+            # Crisis management - favors high impact, time pressure
+            score = base_weight * (1.0 + factors["business_impact"] + factors["time_pressure"])
+            if self.policy_gates.get("crisis_mode", False):
+                score *= 2.0
+
+        elif persona == Persona.COMPLIANCE_OFFICER:
+            # Regulatory focus - favors when compliance mode active
+            score = base_weight
+            if self.policy_gates.get("compliance_mode", False):
+                score *= 3.0
+            if "data_exfiltration" in context.attack_stage.lower():
+                score *= 1.5
+
+        else:  # BALANCED
+            score = base_weight * sum(factors.values()) / len(factors)
+
+        return max(0.0, score)
+
+    def _calculate_collaboration_score(self, dominant: Persona, secondary: Optional[Persona], context: DecisionContext) -> float:
+        """Calculate collaboration effectiveness score"""
+        if not secondary:
+            return 0.0
+
+        # Purple team combinations are highly collaborative
+        if dominant == Persona.PURPLE_TEAM or secondary == Persona.PURPLE_TEAM:
+            return 0.9
+
+        # Red-Blue collaboration
+        if {dominant, secondary} == {Persona.ELLIOT, Persona.MR_ROBOT}:
+            return 0.8
+
+        # Threat Hunter + Incident Commander
+        if {dominant, secondary} == {Persona.THREAT_HUNTER, Persona.INCIDENT_COMMANDER}:
+            return 0.7
+
+        return 0.5
+
+    def _explain_advanced_persona_selection(self, factors: Dict[str, float], top_personas: List[Tuple[Persona, float]]) -> str:
+        """Generate human-readable reasoning for advanced persona selection"""
+        dominant_persona, dominant_weight = top_personas[0]
+        secondary_persona, secondary_weight = top_personas[1] if len(top_personas) > 1 else (None, 0)
+
+        # Identify key factors
         dominant_factors = sorted(factors.items(), key=lambda x: x[1], reverse=True)[:2]
+        factor_descriptions = []
 
-        reasoning_parts = []
         for factor, value in dominant_factors:
             if value > 0.7:
-                reasoning_parts.append(f"High {factor} factor ({value:.2f})")
+                factor_descriptions.append(f"High {factor} ({value:.2f})")
             elif value < 0.3:
-                reasoning_parts.append(f"Low {factor} factor ({value:.2f})")
+                factor_descriptions.append(f"Low {factor} ({value:.2f})")
+            else:
+                factor_descriptions.append(f"Moderate {factor} ({value:.2f})")
 
-        persona_choice = "Blue (defensive)" if alpha > beta else "Red (proactive)"
-        confidence_desc = "high" if abs(alpha - beta) > 0.3 else "moderate"
+        # Persona explanations
+        persona_descriptions = {
+            Persona.MR_ROBOT: "defensive/reactive approach",
+            Persona.ELLIOT: "proactive hunting approach",
+            Persona.PURPLE_TEAM: "collaborative validation approach",
+            Persona.THREAT_HUNTER: "advanced hunting approach",
+            Persona.INCIDENT_COMMANDER: "crisis management approach",
+            Persona.COMPLIANCE_OFFICER: "regulatory compliance approach",
+            Persona.BALANCED: "balanced hybrid approach"
+        }
 
-        return f"{persona_choice} approach selected with {confidence_desc} confidence. " + \
-               f"Key factors: {', '.join(reasoning_parts)}"
+        primary_desc = persona_descriptions.get(dominant_persona, "unknown approach")
+        confidence_desc = "high" if dominant_weight > 0.6 else "moderate" if dominant_weight > 0.4 else "low"
+
+        reasoning = f"{primary_desc.title()} selected with {confidence_desc} confidence ({dominant_weight:.2f})"
+
+        if secondary_persona and secondary_weight > 0.2:
+            secondary_desc = persona_descriptions.get(secondary_persona, "unknown")
+            reasoning += f" with {secondary_desc} support ({secondary_weight:.2f})"
+
+        reasoning += f". Key factors: {', '.join(factor_descriptions)}"
+
+        return reasoning
 
     async def _generate_action_plan(self, context: DecisionContext, persona_mix: PersonaMix) -> ActionPlan:
         """Generate action plan based on persona and context"""
@@ -328,18 +452,33 @@ class QuantumDecisionEngine:
 
     async def _generate_persona_actions(self, context: DecisionContext, persona_mix: PersonaMix,
                                       stage: DecisionStage) -> List[Dict[str, Any]]:
-        """Generate actions based on dominant persona"""
+        """Generate actions based on dominant and secondary personas"""
         actions = []
 
+        # Primary actions from dominant persona
         if persona_mix.dominant_persona == Persona.MR_ROBOT:
-            # Blue team actions - defensive, proven
             actions.extend(self._get_blue_team_actions(context, stage))
         elif persona_mix.dominant_persona == Persona.ELLIOT:
-            # Red team actions - proactive, hunting
             actions.extend(self._get_red_team_actions(context, stage))
+        elif persona_mix.dominant_persona == Persona.PURPLE_TEAM:
+            actions.extend(self._get_purple_team_actions(context, stage))
+        elif persona_mix.dominant_persona == Persona.THREAT_HUNTER:
+            actions.extend(self._get_threat_hunter_actions(context, stage))
+        elif persona_mix.dominant_persona == Persona.INCIDENT_COMMANDER:
+            actions.extend(self._get_incident_commander_actions(context, stage))
+        elif persona_mix.dominant_persona == Persona.COMPLIANCE_OFFICER:
+            actions.extend(self._get_compliance_officer_actions(context, stage))
         else:
-            # Balanced approach
             actions.extend(self._get_balanced_actions(context, stage))
+
+        # Secondary actions if collaboration score is high
+        if (persona_mix.secondary_persona and
+            persona_mix.collaboration_score > self.collaboration_threshold):
+            secondary_actions = self._get_secondary_persona_actions(
+                persona_mix.secondary_persona, context, stage
+            )
+            # Limit secondary actions to avoid overload
+            actions.extend(secondary_actions[:2])
 
         return actions
 
@@ -391,14 +530,111 @@ class QuantumDecisionEngine:
 
         return actions
 
-    def _get_balanced_actions(self, context: DecisionContext, stage: DecisionStage) -> List[Dict[str, Any]]:
-        """Hybrid approach combining both personas"""
-        blue_actions = self._get_blue_team_actions(context, stage)
-        red_actions = self._get_red_team_actions(context, stage)
+    def _get_purple_team_actions(self, context: DecisionContext, stage: DecisionStage) -> List[Dict[str, Any]]:
+        """Purple team collaborative validation actions"""
+        actions = []
 
-        # Mix 60% blue, 40% red for balanced approach
-        balanced = blue_actions[:2] + red_actions[:1]
-        return balanced
+        if stage == DecisionStage.OBSERVATION:
+            actions.extend([
+                {"op": "purple.validate_detection", "indicators": context.affected_entities, "confidence_threshold": 0.8},
+                {"op": "purple.test_defenses", "scope": "limited", "techniques": ["T1059", "T1055"]},
+                {"op": "purple.collaborative_hunt", "teams": ["red", "blue"], "duration": "2h"}
+            ])
+
+        elif stage == DecisionStage.CONTAINMENT:
+            actions.extend([
+                {"op": "purple.validate_containment", "entities": context.affected_entities},
+                {"op": "purple.test_bypass", "containment_measures": ["isolation", "blocking"]},
+                {"op": "purple.effectiveness_assessment", "metrics": ["detection_time", "response_time"]}
+            ])
+
+        return actions
+
+    def _get_threat_hunter_actions(self, context: DecisionContext, stage: DecisionStage) -> List[Dict[str, Any]]:
+        """Advanced threat hunting actions"""
+        actions = []
+
+        if stage == DecisionStage.OBSERVATION:
+            actions.extend([
+                {"op": "hunt.advanced_analytics", "techniques": ["behavior_analysis", "ml_anomaly"]},
+                {"op": "hunt.threat_landscape", "scope": "campaign_analysis", "lookback": "30d"},
+                {"op": "hunt.attribution", "indicators": context.affected_entities, "ttp_mapping": True}
+            ])
+
+        elif stage == DecisionStage.CONTAINMENT:
+            actions.extend([
+                {"op": "hunt.lateral_analysis", "pivot_points": context.affected_entities},
+                {"op": "hunt.persistence_check", "mechanisms": ["registry", "scheduled_tasks", "services"]},
+                {"op": "hunt.c2_analysis", "network_indicators": context.affected_entities}
+            ])
+
+        return actions
+
+    def _get_incident_commander_actions(self, context: DecisionContext, stage: DecisionStage) -> List[Dict[str, Any]]:
+        """Crisis management and coordination actions"""
+        actions = []
+
+        if stage == DecisionStage.OBSERVATION:
+            actions.extend([
+                {"op": "command.situation_assessment", "scope": "enterprise", "urgency": "high"},
+                {"op": "command.stakeholder_notification", "levels": ["management", "legal", "pr"]},
+                {"op": "command.resource_mobilization", "teams": ["ir", "forensics", "legal"]}
+            ])
+
+        elif stage == DecisionStage.CONTAINMENT:
+            actions.extend([
+                {"op": "command.coordinate_response", "teams": ["blue", "red", "forensics"]},
+                {"op": "command.escalation_management", "triggers": ["business_impact", "data_loss"]},
+                {"op": "command.communication_plan", "channels": ["internal", "external", "regulatory"]}
+            ])
+
+        return actions
+
+    def _get_compliance_officer_actions(self, context: DecisionContext, stage: DecisionStage) -> List[Dict[str, Any]]:
+        """Regulatory compliance focused actions"""
+        actions = []
+
+        if stage == DecisionStage.OBSERVATION:
+            actions.extend([
+                {"op": "compliance.breach_assessment", "regulations": ["gdpr", "pci", "sox", "hipaa"]},
+                {"op": "compliance.notification_requirements", "jurisdictions": ["eu", "us", "local"]},
+                {"op": "compliance.evidence_preservation", "retention_policy": "legal_hold"}
+            ])
+
+        elif stage == DecisionStage.CONTAINMENT:
+            actions.extend([
+                {"op": "compliance.data_impact_assessment", "data_types": ["pii", "phi", "financial"]},
+                {"op": "compliance.regulatory_reporting", "timeline": "72h", "scope": "affected_records"},
+                {"op": "compliance.audit_trail", "actions": "all_response_actions", "format": "immutable"}
+            ])
+
+        return actions
+
+    def _get_secondary_persona_actions(self, persona: Persona, context: DecisionContext, stage: DecisionStage) -> List[Dict[str, Any]]:
+        """Get supporting actions from secondary persona"""
+        if persona == Persona.MR_ROBOT:
+            return self._get_blue_team_actions(context, stage)[:1]  # Limited blue actions
+        elif persona == Persona.ELLIOT:
+            return self._get_red_team_actions(context, stage)[:1]  # Limited red actions
+        elif persona == Persona.PURPLE_TEAM:
+            return self._get_purple_team_actions(context, stage)[:1]
+        elif persona == Persona.THREAT_HUNTER:
+            return self._get_threat_hunter_actions(context, stage)[:1]
+        elif persona == Persona.INCIDENT_COMMANDER:
+            return self._get_incident_commander_actions(context, stage)[:1]
+        elif persona == Persona.COMPLIANCE_OFFICER:
+            return self._get_compliance_officer_actions(context, stage)[:1]
+        else:
+            return []
+
+    def _get_balanced_actions(self, context: DecisionContext, stage: DecisionStage) -> List[Dict[str, Any]]:
+        """Hybrid approach combining multiple personas"""
+        blue_actions = self._get_blue_team_actions(context, stage)[:1]
+        red_actions = self._get_red_team_actions(context, stage)[:1]
+        purple_actions = self._get_purple_team_actions(context, stage)[:1]
+
+        # Balanced mix of different approaches
+        return blue_actions + red_actions + purple_actions
 
     def _calculate_priority(self, context: DecisionContext) -> ActionPriority:
         """Calculate action priority"""
