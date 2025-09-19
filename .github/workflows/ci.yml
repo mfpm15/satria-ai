@@ -71,15 +71,13 @@ jobs:
     - name: 🔧 Install project
       run: poetry install --no-interaction
 
-    - name: 🎨 Check code formatting
+    - name: 🎨 Check code formatting with ruff
       run: |
-        poetry run black --check src/ tests/
-        poetry run isort --check-only src/ tests/
+        poetry run ruff check src/ tests/
+        poetry run ruff format --check src/ tests/
 
-    - name: 🔍 Lint code
-      run: |
-        poetry run flake8 src/ tests/
-        poetry run mypy src/
+    - name: 🔍 Type check with mypy
+      run: poetry run mypy src/
 
     - name: 🛡️ Security check
       run: poetry run bandit -r src/
