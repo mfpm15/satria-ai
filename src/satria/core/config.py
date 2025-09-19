@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     chroma_collection_name: str = Field(default="satria_kb", env="CHROMA_COLLECTION_NAME")
 
     # AI Models - OpenRouter.ai Integration
-    openrouter_api_key: str = Field(default="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", env="OPENROUTER_API_KEY")
+    openrouter_api_key: str = Field(env="OPENROUTER_API_KEY")
     openrouter_base_url: str = Field(default="https://openrouter.ai/api/v1", env="OPENROUTER_BASE_URL")
     openrouter_model: str = Field(default="openrouter/sonoma-sky-alpha", env="OPENROUTER_MODEL")
     openrouter_site_url: str = Field(default="https://github.com/mfpm15/satria-ai", env="OPENROUTER_SITE_URL")
