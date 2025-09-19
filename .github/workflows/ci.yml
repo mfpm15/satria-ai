@@ -1,0 +1,231 @@
+name: SATRIA AI - CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [ published ]
+
+env:
+  PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "1.6.1"
+
+jobs:
+  test:
+    name: 🧪 Tests & Code Quality
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: satria_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - name: 📦 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 📝 Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: ${{ env.POETRY_VERSION }}
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: 🔍 Load cached dependencies
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
+
+    - name: 📚 Install dependencies
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-interaction --no-root
+
+    - name: 🔧 Install project
+      run: poetry install --no-interaction
+
+    - name: 🎨 Check code formatting
+      run: |
+        poetry run black --check src/ tests/
+        poetry run isort --check-only src/ tests/
+
+    - name: 🔍 Lint code
+      run: |
+        poetry run flake8 src/ tests/
+        poetry run mypy src/
+
+    - name: 🛡️ Security check
+      run: poetry run bandit -r src/
+
+    - name: 🧪 Run tests
+      env:
+        POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/satria_test
+        REDIS_URL: redis://localhost:6379
+        ENVIRONMENT: test
+      run: poetry run pytest --cov=src/satria --cov-report=xml --cov-report=term-missing
+
+    - name: 📊 Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: true
+
+  security:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    steps:
+    - name: 📦 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔍 Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: 📤 Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  build:
+    name: 🐳 Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    if: github.event_name == 'push' || github.event_name == 'release'
+
+    steps:
+    - name: 📦 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔧 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 🔑 Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 📊 Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/${{ github.repository }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha
+
+    - name: 🏗️ Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+
+    steps:
+    - name: 📦 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔧 Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: 🔑 Configure Kubernetes
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > ~/.kube/config
+
+    - name: 🚀 Deploy to staging
+      run: |
+        kubectl set image deployment/satria-api satria-api=ghcr.io/${{ github.repository }}:${{ github.sha }} -n satria-staging
+        kubectl rollout status deployment/satria-api -n satria-staging
+
+    - name: 🔍 Run health checks
+      run: |
+        kubectl get pods -n satria-staging
+        kubectl wait --for=condition=available --timeout=300s deployment/satria-api -n satria-staging
+
+  deploy-production:
+    name: 🎯 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'release'
+    environment: production
+
+    steps:
+    - name: 📦 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔧 Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: 🔑 Configure Kubernetes
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBE_CONFIG_PROD }}" | base64 -d > ~/.kube/config
+
+    - name: 🚀 Deploy to production
+      run: |
+        kubectl set image deployment/satria-api satria-api=ghcr.io/${{ github.repository }}:${{ github.event.release.tag_name }} -n satria-prod
+        kubectl rollout status deployment/satria-api -n satria-prod
+
+    - name: 🔍 Run health checks
+      run: |
+        kubectl get pods -n satria-prod
+        kubectl wait --for=condition=available --timeout=300s deployment/satria-api -n satria-prod
+
+    - name: 📢 Notify deployment
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: "🎉 SATRIA AI ${{ github.event.release.tag_name }} deployed to production!"
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

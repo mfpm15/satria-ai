@@ -1,0 +1,89 @@
+name: 🛡️ Security Monitoring
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6 AM
+  workflow_dispatch:
+
+jobs:
+  dependency-scan:
+    name: 📦 Dependency Security Scan
+    runs-on: ubuntu-latest
+    steps:
+    - name: 📦 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: 📝 Install Poetry
+      uses: snok/install-poetry@v1
+
+    - name: 📚 Install dependencies
+      run: poetry install
+
+    - name: 🔍 Run Safety check
+      run: poetry run safety check
+
+    - name: 🛡️ Run pip-audit
+      run: |
+        pip install pip-audit
+        pip-audit
+
+  secret-scan:
+    name: 🔐 Secret Detection
+    runs-on: ubuntu-latest
+    steps:
+    - name: 📦 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 🔍 Run TruffleHog
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --debug --only-verified
+
+  container-scan:
+    name: 🐳 Container Security Scan
+    runs-on: ubuntu-latest
+    steps:
+    - name: 📦 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🏗️ Build image
+      run: docker build -t satria-ai:latest .
+
+    - name: 🔍 Run Trivy
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'satria-ai:latest'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: 📤 Upload results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  compliance-check:
+    name: ✅ Compliance Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: 📦 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔍 Check license compliance
+      run: |
+        find . -name "*.py" -exec grep -L "MIT License\|Apache License\|GPL" {} \; || true
+
+    - name: 📋 Generate SBOM
+      uses: anchore/sbom-action@v0
+      with:
+        path: ./
+        format: spdx-json

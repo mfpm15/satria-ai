@@ -1,0 +1,478 @@
+# SATRIA Purple Team Playbook: Ransomware Kill-Chain Tabletop
+# Based on Grand Design Section 25.4
+
+id: pb-ransomware-tabletop-01
+name: "Ransomware Kill-Chain Tabletop Exercise"
+version: "1.0.0"
+description: "Comprehensive ATT&CK scenario validation for ransomware containment and backup recovery"
+
+metadata:
+  author: "SATRIA AI Purple Team"
+  created: "2025-09-19"
+  mitre_techniques: ["T1486", "T1490", "T1489", "T1083", "T1021", "T1055", "T1047"]
+  safety_level: "moderate"
+  environment: "lab"
+  purple_team: true
+  business_impact: "critical"
+  scenario_type: "ransomware_simulation"
+
+# Preconditions
+preconditions:
+  - name: "caldera_online"
+    check: "caldera.server.status == 'online'"
+    description: "MITRE Caldera server is operational"
+  - name: "deception_enabled"
+    check: "deception.canaries.deployed == true"
+    description: "Deception technology is active"
+  - name: "backup_systems_ready"
+    check: "backup.systems.validated == true"
+    description: "Backup and recovery systems are tested"
+  - name: "lab_isolation"
+    check: "network.isolation.lab == true"
+    description: "Lab network is isolated from production"
+  - name: "edr_monitoring"
+    check: "edr.agents.lab.online == true"
+    description: "EDR agents are active on lab systems"
+
+# Target environment
+targets:
+  domain_controller: "10.10.1.10"
+  file_servers:
+    - "10.10.1.20"  # Primary file server
+    - "10.10.1.21"  # Secondary file server
+  workstations:
+    - "10.10.1.100" # Admin workstation
+    - "10.10.1.101" # User workstation 1
+    - "10.10.1.102" # User workstation 2
+  backup_systems:
+    - "10.10.1.30"  # Primary backup server
+    - "10.10.1.31"  # Offsite backup
+  critical_shares:
+    - "\\\\FILE-01\\Finance"
+    - "\\\\FILE-01\\HR"
+    - "\\\\FILE-02\\Engineering"
+
+# Attack simulation phases
+attack_phases:
+  # Phase 1: Initial Access
+  - name: "initial_access"
+    description: "Simulate phishing-based initial access"
+    duration: "10m"
+    mitre_techniques: ["T1566.001", "T1204.002"]
+    actions:
+      - name: "phishing_email_simulation"
+        type: "caldera.start"
+        parameters:
+          adversary: "phishing_simulation"
+          ability: "spear_phishing_attachment"
+          target: "{{targets.workstations[1]}}"
+          payload: "malicious_document_simulator"
+
+      - name: "user_execution_simulation"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1204.002"
+          test_name: "Malicious Payload Download"
+          target: "{{targets.workstations[1]}}"
+          arguments:
+            url: "https://lab.satria.local/payloads/ransomware_sim.exe"
+
+  # Phase 2: Execution & Persistence
+  - name: "execution_persistence"
+    description: "Establish persistence and begin discovery"
+    duration: "15m"
+    mitre_techniques: ["T1055", "T1053.005", "T1082"]
+    actions:
+      - name: "process_injection"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1055.002"
+          test_name: "Process Hollowing Simulation"
+          target: "{{targets.workstations[1]}}"
+
+      - name: "scheduled_task_persistence"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1053.005"
+          test_name: "Scheduled Task Creation"
+          target: "{{targets.workstations[1]}}"
+          arguments:
+            task_name: "SystemUpdateCheck"
+            command: "C:\\temp\\ransomware_sim.exe"
+
+      - name: "system_discovery"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1082"
+          test_name: "System Information Discovery"
+          target: "{{targets.workstations[1]}}"
+
+  # Phase 3: Privilege Escalation & Defense Evasion
+  - name: "privilege_escalation"
+    description: "Escalate privileges and evade defenses"
+    duration: "20m"
+    mitre_techniques: ["T1548.002", "T1562.001", "T1070.001"]
+    actions:
+      - name: "uac_bypass_simulation"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1548.002"
+          test_name: "UAC Bypass via Event Viewer"
+          target: "{{targets.workstations[1]}}"
+
+      - name: "disable_security_tools"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1562.001"
+          test_name: "Disable Windows Defender"
+          target: "{{targets.workstations[1]}}"
+          simulation_mode: true
+
+      - name: "clear_event_logs"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1070.001"
+          test_name: "Clear Windows Event Logs"
+          target: "{{targets.workstations[1]}}"
+          logs: ["Security", "System", "Application"]
+
+  # Phase 4: Credential Access & Discovery
+  - name: "credential_discovery"
+    description: "Harvest credentials and discover network resources"
+    duration: "25m"
+    mitre_techniques: ["T1003.001", "T1087.001", "T1135", "T1083"]
+    actions:
+      - name: "lsass_memory_dump"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1003.001"
+          test_name: "LSASS Memory Dump with ProcDump"
+          target: "{{targets.workstations[1]}}"
+          simulation_mode: true
+
+      - name: "domain_user_enumeration"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1087.001"
+          test_name: "Domain User Discovery"
+          target: "{{targets.workstations[1]}}"
+
+      - name: "network_share_discovery"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1135"
+          test_name: "Network Share Discovery"
+          target: "{{targets.workstations[1]}}"
+
+      - name: "file_and_directory_discovery"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1083"
+          test_name: "File and Directory Discovery"
+          target: "{{targets.workstations[1]}}"
+          paths: "{{targets.critical_shares}}"
+
+  # Phase 5: Lateral Movement
+  - name: "lateral_movement"
+    description: "Move laterally to critical systems"
+    duration: "20m"
+    mitre_techniques: ["T1021.001", "T1021.002", "T1047"]
+    actions:
+      - name: "rdp_lateral_movement"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1021.001"
+          test_name: "RDP Connection Simulation"
+          source: "{{targets.workstations[1]}}"
+          target: "{{targets.workstations[0]}}"  # Admin workstation
+
+      - name: "smb_lateral_movement"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1021.002"
+          test_name: "SMB/Admin$ Share Access"
+          source: "{{targets.workstations[0]}}"
+          target: "{{targets.file_servers[0]}}"
+
+      - name: "wmi_execution"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1047"
+          test_name: "WMI Remote Command Execution"
+          source: "{{targets.workstations[0]}}"
+          target: "{{targets.file_servers[0]}}"
+
+  # Phase 6: Collection & Staging
+  - name: "data_collection"
+    description: "Collect and stage sensitive data"
+    duration: "15m"
+    mitre_techniques: ["T1005", "T1039", "T1074.001"]
+    actions:
+      - name: "local_data_collection"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1005"
+          test_name: "Data from Local System"
+          target: "{{targets.file_servers[0]}}"
+          file_types: [".docx", ".xlsx", ".pdf"]
+
+      - name: "network_share_collection"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1039"
+          test_name: "Data from Network Shared Drive"
+          target: "{{targets.critical_shares[0]}}"
+
+      - name: "local_staging"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1074.001"
+          test_name: "Local Data Staging"
+          target: "{{targets.file_servers[0]}}"
+          staging_directory: "C:\\temp\\collected_data"
+
+  # Phase 7: Impact - Ransomware Deployment
+  - name: "ransomware_deployment"
+    description: "Simulate ransomware deployment and file encryption"
+    duration: "10m"
+    mitre_techniques: ["T1486", "T1490", "T1489"]
+    actions:
+      - name: "file_encryption_simulation"
+        type: "edr.simulate"
+        parameters:
+          event_type: "file_encrypt_pattern"
+          target: "{{targets.file_servers[0]}}"
+          patterns:
+            - "rapid_file_modifications"
+            - "file_extension_changes"
+            - "large_volume_file_operations"
+
+      - name: "shadow_copy_deletion"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1490"
+          test_name: "Windows Shadow Copy Deletion"
+          target: "{{targets.file_servers[0]}}"
+          simulation_mode: true
+
+      - name: "service_disruption"
+        type: "atomic.invoke"
+        parameters:
+          technique: "T1489"
+          test_name: "Service Stop"
+          target: "{{targets.file_servers[0]}}"
+          services: ["VSS", "Backup"]
+          simulation_mode: true
+
+# Response validation
+response_validation:
+  # Automated response testing
+  automated_responses:
+    - name: "network_isolation"
+      trigger: "ransomware_behavior_detected"
+      expected_action: "orchestrator.network.isolate"
+      target: "{{detected_hosts}}"
+      timeout: "2m"
+
+    - name: "backup_validation"
+      trigger: "file_encryption_detected"
+      expected_action: "backup.integrity_check"
+      scope: "critical_shares"
+      timeout: "5m"
+
+    - name: "incident_creation"
+      trigger: "critical_alert_threshold"
+      expected_action: "orchestrator.ticketing.create"
+      severity: "critical"
+      timeout: "1m"
+
+  # Manual response procedures
+  manual_responses:
+    - name: "backup_restoration"
+      action: "restore.validate"
+      parameters:
+        dataset: "golden_backup"
+        target: "{{targets.file_servers[0]}}"
+        rpo_target: "1h"
+        rto_target: "4h"
+
+    - name: "forensic_collection"
+      action: "forensics.collect"
+      parameters:
+        targets: "{{affected_systems}}"
+        artifacts: ["memory_dump", "disk_image", "event_logs"]
+        chain_of_custody: true
+
+    - name: "threat_hunting"
+      action: "hunt.post_incident"
+      parameters:
+        scope: "entire_lab_network"
+        iocs: "{{incident_artifacts.iocs}}"
+        duration: "24h"
+
+# Detection expectations
+detection_expectations:
+  - phase: "initial_access"
+    expected_detections:
+      - "email_attachment_execution"
+      - "suspicious_process_creation"
+      - "network_connection_to_external"
+
+  - phase: "persistence"
+    expected_detections:
+      - "scheduled_task_creation"
+      - "process_injection"
+      - "registry_modification"
+
+  - phase: "privilege_escalation"
+    expected_detections:
+      - "uac_bypass_attempt"
+      - "security_tool_disabling"
+      - "event_log_clearing"
+
+  - phase: "credential_access"
+    expected_detections:
+      - "lsass_memory_access"
+      - "credential_dumping_tools"
+      - "unusual_authentication_activity"
+
+  - phase: "lateral_movement"
+    expected_detections:
+      - "rdp_brute_force"
+      - "smb_enumeration"
+      - "wmi_remote_execution"
+
+  - phase: "collection"
+    expected_detections:
+      - "large_file_access_volume"
+      - "unusual_file_access_patterns"
+      - "data_staging_activity"
+
+  - phase: "impact"
+    expected_detections:
+      - "file_encryption_behavior"
+      - "shadow_copy_deletion"
+      - "service_termination"
+
+# Safety measures
+safety:
+  approval_required: true
+  simulation_mode: true
+  lab_isolation: true
+
+  limits:
+    max_affected_systems: 5
+    max_exercise_duration: "2h"
+    max_simulated_encryption: "100MB"
+
+  protection_measures:
+    - "production_network_isolation"
+    - "backup_system_protection"
+    - "automated_rollback_triggers"
+
+  emergency_procedures:
+    - name: "immediate_stop"
+      trigger: "production_system_detected"
+      action: "exercise_terminate_all"
+
+    - name: "backup_protection"
+      trigger: "backup_system_access_detected"
+      action: "backup_isolation_activate"
+
+# Success criteria
+success_criteria:
+  - name: "detection_coverage"
+    metric: "detected_phases >= 6"
+    weight: 0.3
+
+  - name: "response_effectiveness"
+    metric: "automated_responses_triggered >= 3"
+    weight: 0.25
+
+  - name: "containment_speed"
+    metric: "mean_containment_time <= 10m"
+    weight: 0.2
+
+  - name: "backup_recovery_success"
+    metric: "backup_validation.success == true"
+    weight: 0.15
+
+  - name: "false_positive_control"
+    metric: "false_positive_rate <= 0.1"
+    weight: 0.1
+
+# Learning outcomes
+learning_objectives:
+  detection_improvements:
+    - "Early ransomware indicators"
+    - "Lateral movement patterns"
+    - "Data collection behaviors"
+    - "Encryption activity signatures"
+
+  response_optimization:
+    - "Automated containment effectiveness"
+    - "Backup recovery procedures"
+    - "Incident escalation flows"
+    - "Cross-team coordination"
+
+  process_enhancements:
+    - "Playbook execution speed"
+    - "Decision-making workflows"
+    - "Communication protocols"
+    - "Recovery time objectives"
+
+# Deception integration
+deception_validation:
+  canary_triggers:
+    - type: "file_canary"
+      location: "{{targets.critical_shares[0]}}"
+      expected_trigger: "file_access_during_collection"
+
+    - type: "credential_canary"
+      location: "{{targets.domain_controller}}"
+      expected_trigger: "credential_access_attempt"
+
+    - type: "service_canary"
+      location: "{{targets.file_servers[0]}}"
+      expected_trigger: "service_enumeration"
+
+# Post-exercise analysis
+post_execution:
+  - name: "attack_path_reconstruction"
+    action: "analysis.attack_chain"
+    parameters:
+      source_events: "{{exercise_timeline}}"
+      mitre_mapping: "{{attack_phases.mitre_techniques}}"
+      kill_chain_gaps: "{{undetected_phases}}"
+
+  - name: "detection_effectiveness_report"
+    action: "analysis.detection_coverage"
+    parameters:
+      expected_detections: "{{detection_expectations}}"
+      actual_detections: "{{siem_events.exercise_id}}"
+      coverage_gaps: "{{missed_detections}}"
+
+  - name: "response_timeline_analysis"
+    action: "analysis.response_metrics"
+    parameters:
+      response_actions: "{{orchestrator_actions.exercise_id}}"
+      target_timings: "{{response_validation.timeouts}}"
+      bottleneck_identification: true
+
+  - name: "backup_recovery_validation"
+    action: "analysis.backup_effectiveness"
+    parameters:
+      recovery_test_results: "{{backup_restoration.results}}"
+      rpo_achievement: "{{backup_restoration.rpo_actual}}"
+      rto_achievement: "{{backup_restoration.rto_actual}}"
+
+  - name: "consciousness_layer_integration"
+    action: "memory.store_exercise"
+    parameters:
+      scenario_type: "ransomware_tabletop"
+      attack_simulation: "{{attack_phases}}"
+      detection_performance: "{{detection_effectiveness_report}}"
+      response_performance: "{{response_timeline_analysis}}"
+      recovery_validation: "{{backup_recovery_validation}}"
+      lessons_learned: "{{learning_objectives}}"
+      improvement_recommendations: "{{analysis_outputs.recommendations}}"

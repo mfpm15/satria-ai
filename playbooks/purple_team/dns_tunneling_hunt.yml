@@ -1,0 +1,341 @@
+# SATRIA Purple Team Playbook: DNS Tunneling Hunt
+# Based on Grand Design Section 25.3
+
+id: pb-dns-tunnel-hunt-01
+name: "DNS Tunneling Detection and Blue Team Assist"
+version: "1.0.0"
+description: "Use Red Team techniques to improve DNS tunneling detection capabilities"
+
+metadata:
+  author: "SATRIA AI Purple Team"
+  created: "2025-09-19"
+  mitre_techniques: ["T1071.004", "T1041", "T1048.003"]
+  safety_level: "moderate"
+  environment: "lab"
+  purple_team: true
+  detection_focus: "dns_tunnel"
+
+# Preconditions
+preconditions:
+  - name: "lab_dns_server"
+    check: "lab.dns.server == 'available'"
+    description: "Lab DNS server is configured and accessible"
+  - name: "dns_monitoring"
+    check: "monitoring.dns.enabled == true"
+    description: "DNS monitoring is active"
+  - name: "baseline_established"
+    check: "baseline.dns.traffic.available == true"
+    description: "Normal DNS traffic baseline exists"
+  - name: "tunneling_tools_available"
+    check: "red_tools.dns_tunnel.ready == true"
+    description: "DNS tunneling tools are available"
+
+# Target configuration
+targets:
+  lab_dns_server: "{{lab.dns.primary | default('10.10.1.10')}}"
+  tunnel_domain: "tunnel.lab.satria.local"
+  client_hosts:
+    - "10.10.1.100"  # Client 1
+    - "10.10.1.101"  # Client 2
+  data_exfil_sizes:
+    - "1KB"   # Small data
+    - "10KB"  # Medium data
+    - "100KB" # Large data
+
+# Scenario phases
+phases:
+  # Phase 1: Establish Normal DNS Baseline
+  - name: "baseline_establishment"
+    description: "Generate normal DNS traffic patterns"
+    duration: "10m"
+    actions:
+      - name: "normal_dns_queries"
+        type: "dns.simulate_normal"
+        parameters:
+          clients: "{{targets.client_hosts}}"
+          query_types: ["A", "AAAA", "MX", "TXT"]
+          domains: ["google.com", "microsoft.com", "github.com"]
+          rate: "5-10 queries/minute"
+          pattern: "random"
+
+  # Phase 2: Simple DNS Tunneling
+  - name: "simple_dns_tunnel"
+    description: "Implement basic DNS tunneling using HexStrike tools"
+    duration: "15m"
+    actions:
+      - name: "setup_tunnel_server"
+        type: "red.hexstrike.run"
+        parameters:
+          tool: "iodine"
+          args:
+            - "--simulate"
+            - "--server"
+            - "{{targets.tunnel_domain}}"
+            - "--port"
+            - "53"
+          timebox: "5m"
+          safety_notes: "Simulation mode only"
+
+      - name: "create_tunnel_client"
+        type: "red.hexstrike.run"
+        parameters:
+          tool: "iodine"
+          args:
+            - "--simulate"
+            - "--client"
+            - "{{targets.lab_dns_server}}"
+            - "--domain"
+            - "{{targets.tunnel_domain}}"
+          timebox: "10m"
+          safety_notes: "Limited to lab network"
+
+  # Phase 3: Data Exfiltration Simulation
+  - name: "data_exfiltration"
+    description: "Simulate data exfiltration through DNS tunnel"
+    duration: "20m"
+    actions:
+      - name: "small_data_exfil"
+        type: "dns.tunnel.exfiltrate"
+        parameters:
+          data_size: "{{targets.data_exfil_sizes[0]}}"
+          method: "txt_record"
+          encoding: "base64"
+          chunk_size: "63_bytes"
+          rate: "1_query_per_second"
+
+      - name: "medium_data_exfil"
+        type: "dns.tunnel.exfiltrate"
+        parameters:
+          data_size: "{{targets.data_exfil_sizes[1]}}"
+          method: "subdomain_encoding"
+          encoding: "base32"
+          chunk_size: "40_bytes"
+          rate: "5_queries_per_second"
+
+      - name: "large_data_exfil"
+        type: "dns.tunnel.exfiltrate"
+        parameters:
+          data_size: "{{targets.data_exfil_sizes[2]}}"
+          method: "mixed_encoding"
+          encoding: "custom"
+          chunk_size: "50_bytes"
+          rate: "10_queries_per_second"
+
+  # Phase 4: Advanced Evasion Techniques
+  - name: "evasion_techniques"
+    description: "Test advanced DNS tunneling evasion methods"
+    duration: "15m"
+    actions:
+      - name: "domain_generation"
+        type: "dns.tunnel.dga"
+        parameters:
+          algorithm: "simple_dga"
+          domains_per_hour: 10
+          tld_variations: [".com", ".org", ".net"]
+          pattern: "random_alphanumeric"
+
+      - name: "query_type_variation"
+        type: "dns.tunnel.query_variation"
+        parameters:
+          query_types: ["TXT", "AAAA", "MX", "CNAME"]
+          rotation_pattern: "sequential"
+          timing_jitter: "1-5_seconds"
+
+      - name: "subdomain_randomization"
+        type: "dns.tunnel.subdomain_random"
+        parameters:
+          subdomain_length: "variable_8_16"
+          encoding_schemes: ["base64", "hex", "custom"]
+          legitimate_domains_mix: 0.3
+
+# Detection validation
+detection_validation:
+  expected_triggers:
+    - detector: "dns_tunnel_entropy"
+      signals:
+        - "high_entropy_subdomain"
+        - "unusual_query_frequency"
+        - "large_txt_record"
+      threshold: "> 0.8"
+
+    - detector: "dns_tunnel_volume"
+      signals:
+        - "excessive_dns_queries"
+        - "single_domain_focus"
+        - "unusual_query_distribution"
+      threshold: "> 0.7"
+
+    - detector: "dns_tunnel_pattern"
+      signals:
+        - "base64_in_subdomain"
+        - "regular_query_interval"
+        - "suspicious_domain_length"
+      threshold: "> 0.6"
+
+# Blue team assistance
+blue_team_improvements:
+  detector_tuning:
+    - name: "entropy_threshold_optimization"
+      action: "detectors.train"
+      parameters:
+        usecase: "dns_tunnel"
+        features: ["subdomain_entropy", "query_frequency", "response_size"]
+        calibration: "isotonic"
+        training_data: "{{exercise_results.dns_queries}}"
+
+    - name: "baseline_update"
+      action: "baselining.update"
+      parameters:
+        entity_type: "dns_client"
+        metrics: ["queries_per_minute", "unique_domains", "query_type_distribution"]
+        time_window: "30d"
+        outlier_threshold: "3_sigma"
+
+    - name: "risk_scoring_recalibration"
+      action: "risk.recalibrate"
+      parameters:
+        usecase: "dns_tunnel"
+        threshold_delta: -0.05
+        confidence_boost: 0.1
+        business_impact_weight: 0.3
+
+# Feature engineering improvements
+feature_improvements:
+  new_features:
+    - name: "subdomain_linguistic_entropy"
+      description: "Measure linguistic patterns in subdomains"
+      algorithm: "markov_chain_analysis"
+      threshold: "> 4.5_bits"
+
+    - name: "query_timing_regularity"
+      description: "Detect machine-generated query patterns"
+      algorithm: "fourier_transform_periodicity"
+      threshold: "> 0.9_regularity_score"
+
+    - name: "response_size_distribution"
+      description: "Analyze DNS response size patterns"
+      algorithm: "statistical_outlier_detection"
+      threshold: "> 2.5_std_dev"
+
+# Machine learning model updates
+ml_model_updates:
+  training_data_enhancement:
+    - "legitimate_dns_patterns"
+    - "known_tunneling_signatures"
+    - "evasion_technique_samples"
+
+  model_retraining:
+    algorithm: "xgboost"
+    features:
+      - "subdomain_entropy"
+      - "query_frequency"
+      - "response_size_variance"
+      - "timing_regularity"
+      - "query_type_diversity"
+    validation_split: 0.2
+    cross_validation: 5
+
+# Safety measures
+safety:
+  approval_required: true
+  simulation_mode: true
+  network_isolation: true
+
+  limits:
+    max_dns_queries: 10000
+    max_data_size: "1MB"
+    max_tunnel_duration: "60m"
+    rate_limit: "50_queries_per_minute"
+
+  monitoring:
+    - "network_bandwidth_usage"
+    - "dns_server_performance"
+    - "detection_system_load"
+
+  emergency_stop:
+    triggers:
+      - "dns_server_overload"
+      - "network_performance_degradation"
+      - "production_system_impact"
+
+# Success criteria
+success_criteria:
+  - name: "tunneling_detected"
+    metric: "detection_rate >= 0.85"
+    weight: 0.4
+
+  - name: "false_positive_controlled"
+    metric: "false_positive_rate <= 0.05"
+    weight: 0.3
+
+  - name: "detection_speed"
+    metric: "mean_detection_time <= 5_minutes"
+    weight: 0.2
+
+  - name: "feature_improvement"
+    metric: "new_features_validated >= 2"
+    weight: 0.1
+
+# Learning outcomes
+learning_objectives:
+  detection_improvements:
+    - "Enhanced entropy calculation methods"
+    - "Improved baseline modeling"
+    - "Better evasion technique coverage"
+    - "Reduced false positive rates"
+
+  operational_insights:
+    - "Optimal detection thresholds"
+    - "Alert prioritization criteria"
+    - "Response automation opportunities"
+    - "Analyst investigation workflows"
+
+# Knowledge distillation
+knowledge_outputs:
+  - name: "updated_detection_rules"
+    type: "sigma_rules"
+    output_path: "/rules/dns_tunneling_enhanced.yml"
+    content: "{{enhanced_detection_logic}}"
+
+  - name: "baseline_models"
+    type: "ml_model"
+    output_path: "/models/dns_baseline_v2.pkl"
+    content: "{{updated_baseline_model}}"
+
+  - name: "investigation_playbook"
+    type: "analyst_playbook"
+    output_path: "/playbooks/dns_tunnel_investigation.yml"
+    content: "{{investigation_procedures}}"
+
+# Post-exercise analysis
+post_execution:
+  - name: "detection_performance_analysis"
+    action: "analysis.detection_effectiveness"
+    parameters:
+      true_positives: "{{tunnel_activities.detected}}"
+      false_positives: "{{legitimate_dns.flagged}}"
+      false_negatives: "{{tunnel_activities.missed}}"
+      detection_algorithms: "{{current_detectors.dns_tunnel}}"
+
+  - name: "model_improvement_assessment"
+    action: "ml.model_comparison"
+    parameters:
+      baseline_model: "{{current_dns_tunnel_model}}"
+      enhanced_model: "{{retrained_model}}"
+      metrics: ["precision", "recall", "f1_score", "auc_roc"]
+
+  - name: "operational_impact_evaluation"
+    action: "analysis.operational_metrics"
+    parameters:
+      alert_volume_change: "{{before_after_alert_counts}}"
+      analyst_workload_impact: "{{investigation_time_metrics}}"
+      system_performance_impact: "{{resource_usage_analysis}}"
+
+  - name: "knowledge_distillation_output"
+    action: "knowledge.extract_learnings"
+    parameters:
+      scenario: "dns_tunneling_hunt"
+      detection_improvements: "{{detection_performance_analysis}}"
+      model_enhancements: "{{model_improvement_assessment}}"
+      operational_insights: "{{operational_impact_evaluation}}"
+      output_formats: ["documentation", "training_materials", "configuration_updates"]

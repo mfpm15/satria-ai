@@ -1,0 +1,274 @@
+# SATRIA Purple Team Playbook: Safe Web Reconnaissance
+# Based on Grand Design Section 25.1
+
+id: pb-web-recon-safe-01
+name: "Safe Web Reconnaissance and Enumeration"
+version: "1.0.0"
+description: "Safe reconnaissance against lab targets using HexStrike tools with controlled scope"
+
+metadata:
+  author: "SATRIA AI Red Team"
+  created: "2025-09-19"
+  mitre_techniques: ["T1595", "T1592", "T1590"]
+  safety_level: "safe"
+  environment: "lab"
+  purple_team: true
+
+# Preconditions that must be met before execution
+preconditions:
+  - name: "scope_validation"
+    check: "policy.scope == 'lab'"
+    description: "Ensure targets are within lab scope"
+  - name: "purple_schedule"
+    check: "schedule.purple == true"
+    description: "Purple team exercise is scheduled"
+  - name: "bandwidth_limit"
+    check: "safety.bandwidth_limited == true"
+    description: "Bandwidth limiting is active"
+  - name: "hexstrike_available"
+    check: "red_team_gateway.hexstrike.online == true"
+    description: "HexStrike MCP gateway is available"
+
+# Target configuration
+targets:
+  scope_allowlist:
+    - "lab.satria.local"
+    - "10.10.0.0/16"
+    - "192.168.56.0/24"
+  primary_target: "{{target.domain | default('lab.satria.local')}}"
+  secondary_targets: "{{target.ips | default(['10.10.1.100', '10.10.1.101'])}}"
+
+# Execution phases
+phases:
+  # Phase 1: Subdomain Discovery
+  - name: "subdomain_discovery"
+    description: "Discover subdomains using passive methods"
+    tools:
+      - name: "subfinder"
+        command: "subfinder"
+        args:
+          - "-d"
+          - "{{targets.primary_target}}"
+          - "-silent"
+          - "-json"
+          - "-o"
+          - "/tmp/subfinder_{{session_id}}.json"
+        safety_level: "safe"
+        timeout: "10m"
+        rate_limit: "unlimited"
+
+      - name: "assetfinder"
+        command: "assetfinder"
+        args:
+          - "--subs-only"
+          - "{{targets.primary_target}}"
+        safety_level: "safe"
+        timeout: "5m"
+        depends_on: []
+
+  # Phase 2: HTTP Service Discovery
+  - name: "http_discovery"
+    description: "Probe discovered domains for HTTP services"
+    tools:
+      - name: "httpx"
+        command: "httpx"
+        args:
+          - "-l"
+          - "/tmp/subfinder_{{session_id}}.json"
+          - "-status-code"
+          - "-title"
+          - "-tech-detect"
+          - "-json"
+          - "-o"
+          - "/tmp/httpx_{{session_id}}.json"
+        safety_level: "safe"
+        timeout: "10m"
+        depends_on: ["subfinder"]
+
+      - name: "dnsx"
+        command: "dnsx"
+        args:
+          - "-l"
+          - "/tmp/subfinder_{{session_id}}.json"
+          - "-a"
+          - "-aaaa"
+          - "-cname"
+          - "-json"
+        safety_level: "safe"
+        timeout: "5m"
+        depends_on: ["subfinder"]
+
+  # Phase 3: Safe Vulnerability Scanning
+  - name: "vulnerability_scan"
+    description: "Scan for low to medium severity vulnerabilities"
+    tools:
+      - name: "nuclei"
+        command: "nuclei"
+        args:
+          - "-l"
+          - "/tmp/httpx_{{session_id}}.json"
+          - "-severity"
+          - "low,medium"
+          - "-json"
+          - "-o"
+          - "/tmp/nuclei_{{session_id}}.json"
+          - "-rate-limit"
+          - "10"
+          - "-concurrency"
+          - "5"
+        safety_level: "moderate"
+        timeout: "15m"
+        depends_on: ["httpx"]
+
+# Action definitions
+actions:
+  - name: "execute_recon_phase"
+    type: "red.hexstrike.run"
+    phase: "{{current_phase}}"
+    parameters:
+      tool: "{{tool.name}}"
+      args: "{{tool.args}}"
+      timebox: "{{tool.timeout}}"
+      session_id: "{{session_id}}"
+    validation:
+      - "targets in scope_allowlist"
+      - "tool.safety_level in ['safe', 'moderate']"
+
+  - name: "process_results"
+    type: "red.analysis.process"
+    parameters:
+      input_files: "{{phase.output_files}}"
+      output_format: "ocsf"
+      destination: "red.findings"
+
+  - name: "update_threat_model"
+    type: "context.graph.update"
+    parameters:
+      entity_type: "reconnaissance"
+      findings: "{{processed_results}}"
+      correlation_id: "{{session_id}}"
+
+# Output configuration
+outputs:
+  - name: "reconnaissance_report"
+    type: "file"
+    path: "/tmp/recon_report_{{session_id}}.json"
+    format: "json"
+    content:
+      - "discovered_subdomains"
+      - "active_services"
+      - "detected_technologies"
+      - "vulnerability_findings"
+
+  - name: "threat_intelligence"
+    type: "event_bus"
+    destination: "red.findings"
+    event_type: "red_team_reconnaissance"
+
+  - name: "detection_validation"
+    type: "metrics"
+    parameters:
+      expected_detections:
+        - "dns_enumeration"
+        - "http_scanning"
+        - "vulnerability_scanning"
+      success_criteria: "detection_rate >= 0.8"
+
+# Safety configuration
+safety:
+  approval_required: false
+  simulation_mode: true
+  rollback_plan: []
+  monitoring:
+    - "network_traffic_volume"
+    - "request_rate_per_target"
+    - "detection_system_alerts"
+
+  limits:
+    max_concurrent_tools: 3
+    max_requests_per_minute: 50
+    max_total_duration: "30m"
+
+  emergency_stop:
+    triggers:
+      - "external_network_detected"
+      - "production_system_hit"
+      - "rate_limit_exceeded"
+    action: "immediate_stop"
+
+# Compliance and audit
+compliance:
+  data_retention: "30d"
+  pii_handling: "mask_all"
+  audit_level: "full"
+
+  approvals:
+    required: false
+    auto_approve_conditions:
+      - "environment == 'lab'"
+      - "safety_level in ['safe', 'moderate']"
+      - "scope_validated == true"
+
+# Success criteria
+success_criteria:
+  - name: "subdomains_discovered"
+    metric: "count(discovered_subdomains) > 0"
+    weight: 0.3
+
+  - name: "services_identified"
+    metric: "count(active_services) > 0"
+    weight: 0.3
+
+  - name: "technologies_detected"
+    metric: "count(detected_technologies) > 0"
+    weight: 0.2
+
+  - name: "detections_triggered"
+    metric: "detection_rate >= 0.8"
+    weight: 0.2
+
+# Purple team validation
+purple_validation:
+  detection_expectations:
+    - event_type: "dns_enumeration"
+      source: "DNS logs"
+      expected_triggers: ["subfinder", "assetfinder", "dnsx"]
+      severity: "informational"
+
+    - event_type: "http_scanning"
+      source: "Web access logs"
+      expected_triggers: ["httpx"]
+      severity: "low"
+
+    - event_type: "vulnerability_scanning"
+      source: "IDS/IPS"
+      expected_triggers: ["nuclei"]
+      severity: "medium"
+
+  learning_objectives:
+    - "Validate DNS monitoring coverage"
+    - "Test HTTP scanning detection"
+    - "Measure vulnerability scanner visibility"
+    - "Assess alert correlation capabilities"
+
+# Post-execution analysis
+post_execution:
+  - name: "generate_detection_report"
+    action: "report.detection_analysis"
+    parameters:
+      expected_events: "{{purple_validation.detection_expectations}}"
+      actual_events: "{{siem.events.session_id}}"
+
+  - name: "update_detection_rules"
+    action: "knowledge.distillation"
+    parameters:
+      gaps: "{{detection_report.gaps}}"
+      improvements: "{{detection_report.recommendations}}"
+
+  - name: "feed_consciousness_layer"
+    action: "memory.store_case"
+    parameters:
+      case_type: "purple_team_exercise"
+      scenario: "web_reconnaissance"
+      outcomes: "{{execution_results}}"
+      lessons_learned: "{{post_execution_analysis}}"
