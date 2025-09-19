@@ -14,7 +14,7 @@ import re
 import uuid
 
 # LLM and embeddings
-import ollama
+from satria.core.llm_client import llm_client, LLMMessage
 
 from satria.core.agent_base import BaseAgent
 from satria.core.event_bus import event_bus
@@ -140,16 +140,13 @@ class AnalystCopilot(BaseAgent):
     async def initialize(self) -> bool:
         """Initialize the analyst copilot"""
         try:
-            # Initialize Ollama client
-            self.llm_client = ollama.AsyncClient(host=settings.ollama_url)
-
-            # Test LLM connection
-            await self._test_llm_connection()
+            # Initialize OpenRouter LLM client
+            await llm_client.initialize()
 
             # Initialize knowledge base
             await self._initialize_knowledge_base()
 
-            logging.info("Analyst Copilot initialized")
+            logging.info("Analyst Copilot initialized with OpenRouter LLM")
             return True
 
         except Exception as e:
@@ -360,20 +357,26 @@ class AnalystCopilot(BaseAgent):
             return context_data
 
     async def _generate_llm_response(self, query: AnalystQuery, context_data: Dict[str, Any]) -> str:
-        """Generate response using LLM"""
+        """Generate response using OpenRouter LLM"""
         try:
             # Build comprehensive prompt
-            prompt = self._build_analysis_prompt(query, context_data)
+            system_prompt, user_prompt = self._build_analysis_prompts(query, context_data)
 
-            if self.llm_client:
-                response = await self.llm_client.generate(
-                    model=self.llm_model,
-                    prompt=prompt,
-                    stream=False
-                )
+            # Create messages for OpenRouter
+            messages = [
+                LLMMessage(role="system", content=system_prompt),
+                LLMMessage(role="user", content=user_prompt)
+            ]
 
-                if response and "response" in response:
-                    return response["response"].strip()
+            # Get response from OpenRouter
+            response = await llm_client.chat_completion(
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048
+            )
+
+            if response and response.content:
+                return response.content.strip()
 
             # Fallback response if LLM unavailable
             return self._generate_fallback_response(query, context_data)
@@ -382,49 +385,58 @@ class AnalystCopilot(BaseAgent):
             logging.error(f"Error generating LLM response: {e}")
             return self._generate_fallback_response(query, context_data)
 
-    def _build_analysis_prompt(self, query: AnalystQuery, context_data: Dict[str, Any]) -> str:
-        """Build comprehensive analysis prompt for LLM"""
-        prompt_parts = []
+    def _build_analysis_prompts(self, query: AnalystQuery, context_data: Dict[str, Any]) -> Tuple[str, str]:
+        """Build system and user prompts for LLM"""
 
         # System prompt
-        prompt_parts.append("""You are SATRIA AI, an advanced cybersecurity analyst assistant.
+        system_prompt = """You are SATRIA AI, an advanced cybersecurity analyst assistant.
 You help security analysts with incident analysis, threat hunting, and forensic investigations.
-Provide detailed, actionable insights based on the available data.""")
+Provide detailed, actionable insights based on the available data.
+
+Your responses should be:
+- Technically accurate and specific
+- Actionable with clear next steps
+- Include relevant MITRE ATT&CK techniques when applicable
+- Reference threat intelligence when available
+- Provide risk assessment with confidence levels
+
+Always structure your response with:
+1. Executive Summary (2-3 sentences)
+2. Key Findings
+3. Risk Assessment (with confidence level)
+4. Recommendations (prioritized)
+5. Next Steps (specific actions)"""
+
+        # User prompt with context
+        user_parts = []
 
         # Query context
-        prompt_parts.append(f"\nANALYST QUERY:")
-        prompt_parts.append(f"Type: {query.query_type.value}")
-        prompt_parts.append(f"Question: {query.query_text}")
+        user_parts.append(f"ANALYST QUERY:")
+        user_parts.append(f"Type: {query.query_type.value}")
+        user_parts.append(f"Question: {query.query_text}")
 
         # Context data
         if context_data["evidence"]:
-            prompt_parts.append(f"\nAVAILABLE EVIDENCE:")
+            user_parts.append(f"\nAVAILABLE EVIDENCE:")
             for i, evidence in enumerate(context_data["evidence"][:5], 1):
-                prompt_parts.append(f"{i}. {evidence['type']}: {evidence.get('description', str(evidence))}")
+                user_parts.append(f"{i}. {evidence['type']}: {evidence.get('description', str(evidence))}")
 
         if context_data["memory_insights"]:
-            prompt_parts.append(f"\nSIMILAR PAST INCIDENTS:")
+            user_parts.append(f"\nSIMILAR PAST INCIDENTS:")
             for insight in context_data["memory_insights"][:3]:
-                prompt_parts.append(f"- {insight['description']} (similarity: {insight['similarity']:.2f})")
+                user_parts.append(f"- {insight['description']} (similarity: {insight['similarity']:.2f})")
 
         if context_data["threat_intelligence"]:
-            prompt_parts.append(f"\nTHREAT INTELLIGENCE:")
+            user_parts.append(f"\nTHREAT INTELLIGENCE:")
             for intel in context_data["threat_intelligence"][:3]:
-                prompt_parts.append(f"- {intel['indicator']}: threat score {intel['threat_score']}")
+                user_parts.append(f"- {intel['indicator']}: threat score {intel['threat_score']}")
 
         # Response format guidance
-        prompt_parts.append(f"\nResponse format: {query.preferred_format.value}")
-        prompt_parts.append("""
-Provide a comprehensive analysis that includes:
-1. Executive Summary (2-3 sentences)
-2. Key Findings
-3. Risk Assessment
-4. Recommendations
-5. Next Steps
+        user_parts.append(f"\nPreferred response format: {query.preferred_format.value}")
 
-Be specific, actionable, and focus on cybersecurity implications.""")
+        user_prompt = "\n".join(user_parts)
 
-        return "\n".join(prompt_parts)
+        return system_prompt, user_prompt
 
     def _generate_fallback_response(self, query: AnalystQuery, context_data: Dict[str, Any]) -> str:
         """Generate fallback response when LLM is unavailable"""

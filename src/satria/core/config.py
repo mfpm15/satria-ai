@@ -39,7 +39,14 @@ class Settings(BaseSettings):
     chroma_url: str = Field(env="CHROMA_URL")
     chroma_collection_name: str = Field(default="satria_kb", env="CHROMA_COLLECTION_NAME")
 
-    # AI Models
+    # AI Models - OpenRouter.ai Integration
+    openrouter_api_key: str = Field(default="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", env="OPENROUTER_API_KEY")
+    openrouter_base_url: str = Field(default="https://openrouter.ai/api/v1", env="OPENROUTER_BASE_URL")
+    openrouter_model: str = Field(default="openrouter/sonoma-sky-alpha", env="OPENROUTER_MODEL")
+    openrouter_site_url: str = Field(default="https://github.com/mfpm15/satria-ai", env="OPENROUTER_SITE_URL")
+    openrouter_site_name: str = Field(default="SATRIA AI", env="OPENROUTER_SITE_NAME")
+
+    # Legacy AI Models (fallback)
     ollama_url: str = Field(default="http://localhost:11434", env="OLLAMA_URL")
     default_llm_model: str = Field(default="llama3.1:8b", env="DEFAULT_LLM_MODEL")
     embedding_model: str = Field(default="sentence-transformers/all-MiniLM-L6-v2", env="EMBEDDING_MODEL")
