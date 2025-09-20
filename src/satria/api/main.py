@@ -41,11 +41,19 @@ class SATRIAServices:
             return
 
         try:
-            # Initialize Event Bus
-            await event_bus.initialize()
+            # Initialize Event Bus (optional)
+            try:
+                await event_bus.initialize()
+                logging.info("Event Bus initialized successfully")
+            except Exception as e:
+                logging.warning(f"Failed to initialize Event Bus: {e}")
 
-            # Initialize Context Graph
-            await context_graph.initialize()
+            # Initialize Context Graph (optional)
+            try:
+                await context_graph.initialize()
+                logging.info("Context Graph initialized successfully")
+            except Exception as e:
+                logging.warning(f"Failed to initialize Context Graph: {e}")
 
             # Setup Red Team Gateway
             # red_team_gateway is already initialized
@@ -58,7 +66,7 @@ class SATRIAServices:
 
         except Exception as e:
             logging.error(f"Failed to initialize SATRIA services: {e}")
-            raise
+            # Don't raise - allow app to start with degraded functionality
 
     async def shutdown(self):
         """Shutdown all SATRIA services"""
@@ -109,6 +117,26 @@ app.include_router(enhanced_router)
 
 # Security
 security = HTTPBearer()
+
+
+# Root endpoint
+@app.get("/", tags=["Root"])
+async def root() -> Dict[str, Any]:
+    """Root endpoint with API information"""
+    return {
+        "name": "SATRIA AI API v2.0",
+        "version": "2.0.0",
+        "description": "Smart Autonomous Threat Response & Intelligence Agent",
+        "phase": "Phase 4: Enterprise Edition",
+        "status": "operational",
+        "endpoints": {
+            "health": "/health",
+            "docs": "/docs",
+            "api": "/api/v1/",
+            "enterprise": "/api/v1/enterprise/"
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 
 # Health check endpoints

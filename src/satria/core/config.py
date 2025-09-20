@@ -20,23 +20,30 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", env="API_HOST")
     api_port: int = Field(default=8000, env="API_PORT")
     secret_key: str = Field(env="SECRET_KEY")
+    jwt_secret: Optional[str] = Field(default=None, env="JWT_SECRET")
+    jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
+    jwt_expire_minutes: int = Field(default=60, env="JWT_EXPIRE_MINUTES")
     access_token_expire_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
 
     # Database URLs
-    postgres_url: str = Field(env="POSTGRES_URL")
-    neo4j_url: str = Field(env="NEO4J_URL")
-    redis_url: str = Field(env="REDIS_URL")
-    influxdb_url: str = Field(env="INFLUXDB_URL")
-    influxdb_token: str = Field(env="INFLUXDB_TOKEN")
-    influxdb_org: str = Field(env="INFLUXDB_ORG")
-    influxdb_bucket: str = Field(env="INFLUXDB_BUCKET")
+    postgres_url: Optional[str] = Field(default=None, env="POSTGRES_URL")
+    database_url: Optional[str] = Field(default=None, env="DATABASE_URL")
+    neo4j_url: Optional[str] = Field(default=None, env="NEO4J_URL")
+    neo4j_uri: Optional[str] = Field(default=None, env="NEO4J_URI")
+    neo4j_user: Optional[str] = Field(default=None, env="NEO4J_USER")
+    neo4j_password: Optional[str] = Field(default=None, env="NEO4J_PASSWORD")
+    redis_url: str = Field(default="redis://localhost:6379", env="REDIS_URL")
+    influxdb_url: Optional[str] = Field(default=None, env="INFLUXDB_URL")
+    influxdb_token: Optional[str] = Field(default=None, env="INFLUXDB_TOKEN")
+    influxdb_org: Optional[str] = Field(default=None, env="INFLUXDB_ORG")
+    influxdb_bucket: Optional[str] = Field(default=None, env="INFLUXDB_BUCKET")
 
     # Message Brokers
-    kafka_bootstrap_servers: str = Field(env="KAFKA_BOOTSTRAP_SERVERS")
+    kafka_bootstrap_servers: Optional[str] = Field(default=None, env="KAFKA_BOOTSTRAP_SERVERS")
     kafka_topic_prefix: str = Field(default="satria", env="KAFKA_TOPIC_PREFIX")
 
     # Vector Store
-    chroma_url: str = Field(env="CHROMA_URL")
+    chroma_url: Optional[str] = Field(default=None, env="CHROMA_URL")
     chroma_collection_name: str = Field(default="satria_kb", env="CHROMA_COLLECTION_NAME")
 
     # AI Models - OpenRouter.ai Integration
@@ -98,7 +105,6 @@ class Settings(BaseSettings):
     email_password: Optional[str] = Field(default=None, env="EMAIL_PASSWORD")
 
     # Security
-    jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
     hash_algorithm: str = Field(default="bcrypt", env="HASH_ALGORITHM")
     vault_url: Optional[str] = Field(default=None, env="VAULT_URL")
     vault_token: Optional[str] = Field(default=None, env="VAULT_TOKEN")
@@ -114,6 +120,18 @@ class Settings(BaseSettings):
     # Audit Logging
     audit_log_retention_days: int = Field(default=365, env="AUDIT_LOG_RETENTION_DAYS")
     immutable_storage_enabled: bool = Field(default=True, env="IMMUTABLE_STORAGE_ENABLED")
+
+    # CORS Configuration
+    cors_origins: Optional[str] = Field(default=None, env="CORS_ORIGINS")
+
+    # Enterprise Features
+    enterprise_mode: bool = Field(default=False, env="ENTERPRISE_MODE")
+    compliance_enabled: bool = Field(default=False, env="COMPLIANCE_ENABLED")
+    purple_team_enabled: bool = Field(default=False, env="PURPLE_TEAM_ENABLED")
+
+    # Monitoring Features
+    prometheus_enabled: bool = Field(default=False, env="PROMETHEUS_ENABLED")
+    grafana_enabled: bool = Field(default=False, env="GRAFANA_ENABLED")
 
     class Config:
         env_file = ".env"
