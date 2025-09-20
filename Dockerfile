@@ -39,11 +39,13 @@ ENV PYTHONUNBUFFERED=1 \
 RUN groupadd --gid 1000 satria \
     && useradd --uid 1000 --gid satria --shell /bin/bash --create-home satria
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+# Install runtime dependencies and security updates
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && apt-get clean \
+    && apt-get autoremove -y
 
 # Set work directory
 WORKDIR /app
@@ -56,9 +58,11 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY src/ ./src/
 COPY docs/ ./docs/
 
-# Create necessary directories
+# Create necessary directories and set permissions
 RUN mkdir -p /app/logs /app/data /app/temp \
-    && chown -R satria:satria /app
+    && chown -R satria:satria /app \
+    && chmod -R 755 /app \
+    && find /app -type f -exec chmod 644 {} \;
 
 # Switch to non-root user
 USER satria
