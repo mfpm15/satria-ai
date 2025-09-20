@@ -1,0 +1,492 @@
+# SATRIA AI Enterprise Docker Compose Configuration
+# Production-ready deployment with high availability and security
+
+version: '3.8'
+
+services:
+  # Load Balancer
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: satria-nginx
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - api-1
+      - api-2
+      - api-3
+    restart: unless-stopped
+    networks:
+      - satria-frontend
+      - satria-backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Servers (High Availability)
+  api-1:
+    build:
+      context: ../..
+      dockerfile: docker/enterprise/Dockerfile
+      target: application
+    container_name: satria-api-1
+    environment:
+      - NODE_ID=api-1
+      - DATABASE_URL=postgresql://satria:${DB_PASSWORD}@postgres:5432/satria_enterprise
+      - REDIS_URL=redis://redis-cluster:6379/0
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - WORKERS=4
+      - MAX_REQUESTS=1000
+    volumes:
+      - api-1-data:/app/data
+      - api-logs:/app/logs
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cluster:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - satria-backend
+    healthcheck:
+      test: ["CMD", "python", "/app/healthcheck.py"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+
+  api-2:
+    build:
+      context: ../..
+      dockerfile: docker/enterprise/Dockerfile
+      target: application
+    container_name: satria-api-2
+    environment:
+      - NODE_ID=api-2
+      - DATABASE_URL=postgresql://satria:${DB_PASSWORD}@postgres:5432/satria_enterprise
+      - REDIS_URL=redis://redis-cluster:6379/0
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - WORKERS=4
+      - MAX_REQUESTS=1000
+    volumes:
+      - api-2-data:/app/data
+      - api-logs:/app/logs
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cluster:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - satria-backend
+    healthcheck:
+      test: ["CMD", "python", "/app/healthcheck.py"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+
+  api-3:
+    build:
+      context: ../..
+      dockerfile: docker/enterprise/Dockerfile
+      target: application
+    container_name: satria-api-3
+    environment:
+      - NODE_ID=api-3
+      - DATABASE_URL=postgresql://satria:${DB_PASSWORD}@postgres:5432/satria_enterprise
+      - REDIS_URL=redis://redis-cluster:6379/0
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - WORKERS=4
+      - MAX_REQUESTS=1000
+    volumes:
+      - api-3-data:/app/data
+      - api-logs:/app/logs
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cluster:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - satria-backend
+    healthcheck:
+      test: ["CMD", "python", "/app/healthcheck.py"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+
+  # AI Processing Nodes
+  ai-processor-1:
+    build:
+      context: ../..
+      dockerfile: docker/enterprise/Dockerfile
+      target: ai-processing
+    container_name: satria-ai-1
+    environment:
+      - NODE_ID=ai-1
+      - NODE_TYPE=ai_processor
+      - DATABASE_URL=postgresql://satria:${DB_PASSWORD}@postgres:5432/satria_enterprise
+      - REDIS_URL=redis://redis-cluster:6379/1
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - WORKERS=2
+      - AI_CACHE_SIZE=10Gi
+    volumes:
+      - ai-1-data:/app/data
+      - ai-models:/app/models
+      - ai-logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cluster:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - satria-backend
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+        reservations:
+          memory: 8G
+    healthcheck:
+      test: ["CMD", "python", "/app/healthcheck.py"]
+      interval: 60s
+      timeout: 45s
+      retries: 3
+      start_period: 180s
+
+  ai-processor-2:
+    build:
+      context: ../..
+      dockerfile: docker/enterprise/Dockerfile
+      target: ai-processing
+    container_name: satria-ai-2
+    environment:
+      - NODE_ID=ai-2
+      - NODE_TYPE=ai_processor
+      - DATABASE_URL=postgresql://satria:${DB_PASSWORD}@postgres:5432/satria_enterprise
+      - REDIS_URL=redis://redis-cluster:6379/1
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - WORKERS=2
+      - AI_CACHE_SIZE=10Gi
+    volumes:
+      - ai-2-data:/app/data
+      - ai-models:/app/models
+      - ai-logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cluster:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - satria-backend
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+        reservations:
+          memory: 8G
+    healthcheck:
+      test: ["CMD", "python", "/app/healthcheck.py"]
+      interval: 60s
+      timeout: 45s
+      retries: 3
+      start_period: 180s
+
+  # Database (PostgreSQL with High Availability)
+  postgres:
+    image: postgres:15-alpine
+    container_name: satria-postgres
+    environment:
+      - POSTGRES_DB=satria_enterprise
+      - POSTGRES_USER=satria
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - postgres-backups:/backups
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command: |
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c shared_preload_libraries='pg_stat_statements'
+      -c log_statement='all'
+      -c log_min_duration_statement=1000
+    restart: unless-stopped
+    networks:
+      - satria-backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U satria -d satria_enterprise"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  # Redis Cluster for Caching and Session Management
+  redis-cluster:
+    image: redis:7-alpine
+    container_name: satria-redis
+    command: |
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis-data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    restart: unless-stopped
+    networks:
+      - satria-backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # Monitoring Stack
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: satria-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    networks:
+      - satria-backend
+      - satria-monitoring
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: satria-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    restart: unless-stopped
+    networks:
+      - satria-monitoring
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Log Management
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    container_name: satria-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+    networks:
+      - satria-backend
+      - satria-monitoring
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.8.0
+    container_name: satria-logstash
+    volumes:
+      - ./monitoring/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./monitoring/logstash/config:/usr/share/logstash/config:ro
+      - api-logs:/app/logs:ro
+      - ai-logs:/ai/logs:ro
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    networks:
+      - satria-backend
+      - satria-monitoring
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.8.0
+    container_name: satria-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    networks:
+      - satria-monitoring
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backup Service
+  backup:
+    image: postgres:15-alpine
+    container_name: satria-backup
+    environment:
+      - POSTGRES_DB=satria_enterprise
+      - POSTGRES_USER=satria
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - BACKUP_SCHEDULE=0 2 * * *  # Daily at 2 AM
+    volumes:
+      - postgres-backups:/backups
+      - ./scripts/backup.sh:/backup.sh:ro
+    command: |
+      sh -c "
+        apk add --no-cache dcron
+        echo '0 2 * * * /backup.sh' | crontab -
+        crond -f
+      "
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - satria-backend
+
+# Networks
+networks:
+  satria-frontend:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: satria-frontend
+  satria-backend:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: satria-backend
+  satria-monitoring:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: satria-monitoring
+
+# Volumes
+volumes:
+  # API Data
+  api-1-data:
+    driver: local
+  api-2-data:
+    driver: local
+  api-3-data:
+    driver: local
+  api-logs:
+    driver: local
+
+  # AI Processing Data
+  ai-1-data:
+    driver: local
+  ai-2-data:
+    driver: local
+  ai-models:
+    driver: local
+  ai-logs:
+    driver: local
+
+  # Database
+  postgres-data:
+    driver: local
+  postgres-backups:
+    driver: local
+
+  # Cache
+  redis-data:
+    driver: local
+
+  # Monitoring
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  elasticsearch-data:
+    driver: local
+
+# Secrets (for production use external secret management)
+secrets:
+  db_password:
+    external: true
+  redis_password:
+    external: true
+  jwt_secret:
+    external: true
+  encryption_key:
+    external: true
+  openrouter_api_key:
+    external: true
