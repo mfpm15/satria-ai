@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 1rem 2rem;
+            border-bottom: 3px solid #00ff41;
+            box-shadow: 0 2px 10px rgba(0, 255, 65, 0.3);
+        }
+
+        .header h1 {
+            color: #00ff41;
+            font-size: 2rem;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-top: 0.5rem;
+            font-size: 1.1rem;
+        }
+
+        .container {
+            flex: 1;
+            display: flex;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            gap: 2rem;
+            width: 100%;
+        }
+
+        .chat-container {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            border: 1px solid rgba(0, 255, 65, 0.3);
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+            max-height: 60vh;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .message {
+            margin-bottom: 1.5rem;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .user-message {
+            text-align: right;
+        }
+
+        .user-message .message-content {
+            background: linear-gradient(135deg, #00ff41, #00cc33);
+            color: #000;
+            display: inline-block;
+            padding: 12px 18px;
+            border-radius: 18px 18px 5px 18px;
+            max-width: 70%;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0, 255, 65, 0.3);
+        }
+
+        .ai-message .message-content {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 65, 0.3);
+            display: inline-block;
+            padding: 15px 20px;
+            border-radius: 5px 18px 18px 18px;
+            max-width: 85%;
+            line-height: 1.6;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .message-meta {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .team-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+
+        .red-team { background: #ff4444; color: white; }
+        .blue-team { background: #4444ff; color: white; }
+        .purple-team { background: #8844ff; color: white; }
+        .auto-team { background: #888; color: white; }
+
+        .input-container {
+            padding: 1.5rem;
+            background: rgba(0, 0, 0, 0.5);
+            border-top: 1px solid rgba(0, 255, 65, 0.3);
+        }
+
+        .input-form {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-end;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid rgba(0, 255, 65, 0.3);
+            border-radius: 25px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #e0e0e0;
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.3s ease;
+            resize: none;
+            min-height: 50px;
+            max-height: 120px;
+        }
+
+        .input-field:focus {
+            border-color: #00ff41;
+            box-shadow: 0 0 20px rgba(0, 255, 65, 0.3);
+        }
+
+        .send-button {
+            padding: 15px 25px;
+            background: linear-gradient(135deg, #00ff41, #00cc33);
+            color: #000;
+            border: none;
+            border-radius: 25px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+            white-space: nowrap;
+        }
+
+        .send-button:hover {
+            background: linear-gradient(135deg, #00cc33, #00aa28);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 65, 0.4);
+        }
+
+        .send-button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .sidebar {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            border: 1px solid rgba(0, 255, 65, 0.3);
+            padding: 1.5rem;
+            height: fit-content;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .sidebar h3 {
+            color: #00ff41;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+
+        .examples {
+            list-style: none;
+        }
+
+        .examples li {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+            font-size: 0.9rem;
+        }
+
+        .examples li:hover {
+            background: rgba(0, 255, 65, 0.1);
+            border-left-color: #00ff41;
+            transform: translateX(5px);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(0, 255, 65, 0.3);
+            border-radius: 50%;
+            border-top-color: #00ff41;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .welcome-message {
+            text-align: center;
+            color: #888;
+            padding: 2rem;
+            font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                padding: 1rem;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .input-form {
+                flex-direction: column;
+            }
+
+            .send-button {
+                align-self: flex-end;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 SATRIA AI v2.0</h1>
+        <div class="subtitle">Smart Autonomous Threat Response & Intelligence Agent</div>
+    </div>
+
+    <div class="container">
+        <div class="chat-container">
+            <div class="chat-messages" id="chatMessages">
+                <div class="welcome-message">
+                    <h3>🛡️ Selamat datang di SATRIA AI!</h3>
+                    <p>Saya siap membantu Anda dengan tugas-tugas cybersecurity.</p>
+                    <p>Berikan instruksi seperti "cek IP website google.com" atau "analisis ancaman domain suspicious.com"</p>
+                </div>
+            </div>
+
+            <div class="input-container">
+                <form class="input-form" id="chatForm">
+                    <div class="input-wrapper">
+                        <textarea
+                            class="input-field"
+                            id="userInput"
+                            placeholder="Masukkan permintaan cybersecurity Anda... (contoh: 'cek IP di google.com')"
+                            rows="1"
+                        ></textarea>
+                    </div>
+                    <button type="submit" class="send-button" id="sendButton">
+                        🚀 Kirim
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <h3>📋 Contoh Permintaan</h3>
+            <ul class="examples">
+                <li onclick="fillInput('cek IP di website google.com')">🔍 DNS Reconnaissance</li>
+                <li onclick="fillInput('scan port pada domain facebook.com')">🎯 Port Scanning</li>
+                <li onclick="fillInput('analisis ancaman domain suspicious.com')">🛡️ Threat Analysis</li>
+                <li onclick="fillInput('monitor anomali pada network 192.168.1.1')">📊 Network Monitoring</li>
+                <li onclick="fillInput('vulnerability assessment website example.com')">🚨 Vulnerability Scan</li>
+                <li onclick="fillInput('purple team analysis pada target.com')">🟣 Purple Team Analysis</li>
+                <li onclick="fillInput('incident response untuk malware detected')">🚨 Incident Response</li>
+                <li onclick="fillInput('cek reputation IP 8.8.8.8')">🔍 IP Reputation</li>
+            </ul>
+
+            <h3 style="margin-top: 2rem;">🎭 Tim SATRIA</h3>
+            <div style="font-size: 0.9rem; line-height: 1.6;">
+                <p><span class="team-badge red-team">RED</span> Offensive Security</p>
+                <p><span class="team-badge blue-team">BLUE</span> Defensive Security</p>
+                <p><span class="team-badge purple-team">PURPLE</span> Collaborative Analysis</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatForm = document.getElementById('chatForm');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        const chatMessages = document.getElementById('chatMessages');
+
+        // Auto-resize textarea
+        userInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = this.scrollHeight + 'px';
+        });
+
+        // Handle form submission
+        chatForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            // Add user message to chat
+            addMessage(message, 'user');
+
+            // Clear input and disable button
+            userInput.value = '';
+            userInput.style.height = 'auto';
+            setLoading(true);
+
+            try {
+                // Send request to backend
+                const formData = new FormData();
+                formData.append('user_input', message);
+
+                const response = await fetch('/interface/chat', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    addMessage(result.response, 'ai', {
+                        task_type: result.task_type,
+                        team_role: result.team_role,
+                        artifacts: result.artifacts
+                    });
+                } else {
+                    addMessage(result.response || 'Terjadi kesalahan saat memproses permintaan.', 'ai', {
+                        task_type: 'error',
+                        team_role: 'system'
+                    });
+                }
+            } catch (error) {
+                addMessage('❌ Gagal menghubungi server. Silakan coba lagi.', 'ai', {
+                    task_type: 'error',
+                    team_role: 'system'
+                });
+                console.error('Error:', error);
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        function addMessage(content, sender, meta = {}) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+
+            if (sender === 'ai') {
+                // Format AI response with markdown-like styling
+                content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                content = content.replace(/\n/g, '<br>');
+                contentDiv.innerHTML = content;
+            } else {
+                contentDiv.textContent = content;
+            }
+
+            messageDiv.appendChild(contentDiv);
+
+            // Add metadata for AI messages
+            if (sender === 'ai' && meta.team_role) {
+                const metaDiv = document.createElement('div');
+                metaDiv.className = 'message-meta';
+
+                const teamBadge = document.createElement('span');
+                teamBadge.className = `team-badge ${meta.team_role.replace('_', '-')}-team`;
+                teamBadge.textContent = meta.team_role.toUpperCase().replace('_', ' ');
+
+                metaDiv.appendChild(teamBadge);
+
+                if (meta.task_type) {
+                    metaDiv.appendChild(document.createTextNode(` • ${meta.task_type.replace('_', ' ')}`));
+                }
+
+                if (meta.artifacts && meta.artifacts.length > 0) {
+                    metaDiv.appendChild(document.createTextNode(` • ${meta.artifacts.length} artifacts`));
+                }
+
+                messageDiv.appendChild(metaDiv);
+            }
+
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Remove welcome message if it exists
+            const welcomeMessage = chatMessages.querySelector('.welcome-message');
+            if (welcomeMessage && chatMessages.children.length > 1) {
+                welcomeMessage.remove();
+            }
+        }
+
+        function setLoading(loading) {
+            if (loading) {
+                sendButton.innerHTML = '<span class="loading"></span> Processing...';
+                sendButton.disabled = true;
+                userInput.disabled = true;
+            } else {
+                sendButton.innerHTML = '🚀 Kirim';
+                sendButton.disabled = false;
+                userInput.disabled = false;
+                userInput.focus();
+            }
+        }
+
+        function fillInput(text) {
+            userInput.value = text;
+            userInput.focus();
+            userInput.style.height = 'auto';
+            userInput.style.height = userInput.scrollHeight + 'px';
+        }
+
+        // Focus input on page load
+        window.addEventListener('load', function() {
+            userInput.focus();
+        });
+
+        // Handle Enter key (Shift+Enter for new line)
+        userInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                chatForm.dispatchEvent(new Event('submit'));
+            }
+        });
+    </script>
+</body>
+</html>

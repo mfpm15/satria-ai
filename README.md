@@ -21,23 +21,36 @@ SATRIA adalah sistem AI cybersecurity yang menggabungkan red team dan blue team 
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Python 3.11+
-- Docker & Docker Compose
-- 16GB+ RAM recommended
+### 🌐 Web Interface (Recommended)
 
-### Installation
 ```bash
-git clone https://github.com/your-org/satria-ai.git
-cd satria-ai
-make setup
-make run
+# Start SATRIA AI with web interface
+PYTHONPATH=/home/terrestrial/Desktop/satria-ai/src poetry run uvicorn satria.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Open browser to:
+# 🌐 Chat Interface: http://localhost:8000/interface/
+# 📖 API Docs: http://localhost:8000/docs
 ```
 
-### Access Points
-- **API Gateway**: http://localhost:8001
-- **API Documentation**: http://localhost:8001/docs
-- **Health Check**: http://localhost:8001/health
+### 💬 Chat Interface Usage
+
+Input permintaan cybersecurity seperti:
+- **"cek IP di website google.com"** → 🔍 Red Team DNS reconnaissance
+- **"analisis ancaman domain suspicious.com"** → 🛡️ Blue Team threat analysis
+- **"scan port pada facebook.com"** → 🎯 Red Team port scanning
+- **"purple team analysis pada target.com"** → 🟣 Collaborative analysis
+- **"vulnerability assessment website example.com"** → 🚨 Security assessment
+
+### 🛠️ Prerequisites
+- Python 3.11+
+- Poetry (package manager)
+- Optional: Docker for databases
+
+### 📡 Access Points
+- **🌐 Web Chat Interface**: http://localhost:8000/interface/
+- **📖 API Documentation**: http://localhost:8000/docs
+- **❤️ Health Check**: http://localhost:8000/health
+- **🔧 Enhanced API**: http://localhost:8000/api/v1/
 
 ## 📋 Development Roadmap
 

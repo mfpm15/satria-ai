@@ -90,7 +90,16 @@ jobs:
         OPENROUTER_API_KEY: test_key
         SECRET_KEY: test_secret
         JWT_SECRET: test_jwt_secret
-      run: poetry run pytest --cov=src/satria --cov-report=xml --cov-report=term-missing -v
+        KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+        NEO4J_URI: bolt://localhost:7687
+        NEO4J_USER: neo4j
+        NEO4J_PASSWORD: test
+        CHROMA_URL: http://localhost:8000
+        INFLUXDB_URL: http://localhost:8086
+        INFLUXDB_TOKEN: test_token
+        INFLUXDB_ORG: test_org
+        INFLUXDB_BUCKET: test_bucket
+      run: poetry run pytest --cov=src/satria --cov-report=xml --cov-report=term-missing -v --tb=short
 
     - name: 📊 Upload coverage to Codecov
       uses: codecov/codecov-action@v3

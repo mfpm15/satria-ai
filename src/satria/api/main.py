@@ -26,6 +26,7 @@ from satria.models.events import BaseEvent, EventBatch
 from satria.api.models import *
 from satria.api.security import verify_token
 from satria.api.enhanced_endpoints import enhanced_router
+from satria.interface.web_interface import router as web_router
 
 
 # Global state for services
@@ -114,6 +115,9 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Include enhanced endpoints
 app.include_router(enhanced_router)
+
+# Include web interface
+app.include_router(web_router)
 
 # Security
 security = HTTPBearer()
